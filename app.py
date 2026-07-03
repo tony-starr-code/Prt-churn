@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
+import lightgbm as lgb
+
 
 # Configuração da página do Streamlit
 st.set_page_config(page_title="Predição de Churn - PRT Seguradora", layout="wide")
