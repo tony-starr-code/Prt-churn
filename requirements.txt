@@ -1,6 +1,5 @@
 streamlit
 pandas
 numpy
-xgboost
-joblib
 lightgbm
+joblib
