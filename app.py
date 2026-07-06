@@ -391,25 +391,18 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
 
             X_scoring = df_final[colunas_treino]
 
-            # >>> DIAGNÓSTICO: tipos de dado e nulos em X_scoring, antes de rodar o modelo <<<
-            with st.expander("🔍 Diagnóstico de X_scoring (tipos e nulos)"):
-                st.write("Tipos de dado por coluna:")
-                st.write(X_scoring.dtypes)
-                st.write("Quantidade de nulos por coluna:")
-                st.write(X_scoring.isna().sum())
+            # >>> TESTE RÁPIDO: roda numa amostra de 1000 linhas primeiro, pra ver tempo de escala <<<
+            st.write("⏱️ Testando tempo com amostra de 1000 linhas...")
+            t_amostra = time.time()
+            try:
+                _ = modelo.predict(X_scoring.head(1000))
+                tempo_amostra = time.time() - t_amostra
+                st.write(f"✅ 1000 linhas levaram {tempo_amostra:.2f}s")
+            except Exception as e_amostra:
+                st.error(f"❌ Erro na amostra: {e_amostra}")
 
-            # >>> TESTE DE ESCALA: roda o modelo numa fatia pequena primeiro, pra ver se o
-            # tempo cresce proporcionalmente (normal) ou explode (indica gargalo estrutural) <<<
-            with st.expander("⏱️ Teste de tempo com amostra pequena (1000 linhas)"):
-                t_amostra = time.time()
-                try:
-                    _ = modelo.predict(X_scoring.head(1000))
-                    st.write(f"1000 linhas: {time.time() - t_amostra:.2f}s")
-                except Exception as e_amostra:
-                    st.write(f"Erro ao testar amostra: {e_amostra}")
-
-            # >>> INSTRUMENTAÇÃO: mede o tempo da predição e mostra o tamanho de X_scoring <<<
-            st.write(f"Rodando predição para {X_scoring.shape[0]} linhas x {X_scoring.shape[1]} colunas...")
+            # >>> INSTRUMENTAÇÃO: mede o tempo da predição completa <<<
+            st.write(f"Rodando predição completa para {X_scoring.shape[0]} linhas x {X_scoring.shape[1]} colunas...")
             t0 = time.time()
             with st.spinner("Calculando predições de churn..."):
                 try:
