@@ -1,385 +1,213 @@
+"""
+App Streamlit - Etapa 1: Upload e Tratamento dos 4 CSVs brutos
+------------------------------------------------------------
+Próximas etapas (a implementar depois):
+  2) Clusterização (modelo .pkl)
+  3) Predição de churn usando o cluster como feature (modelo .pkl)
+
+Como rodar:
+  streamlit run app.py
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
-import re
-from dateutil import parser
 
-# CONFIGURAÇÃO DA PÁGINA
-st.set_page_config(page_title="PRT Seguradora - Churn", layout="wide")
+st.set_page_config(page_title="Pipeline Churn", layout="wide")
+st.title("Pipeline: Tratamento de Dados → Clusterização → Churn")
 
-# CACHE DOS ARTEFATOS DO MODELO
-@st.cache_resource
-def carregar_artefatos():
-    modelo = joblib.load('modelo_xgb_churn.pkl')
-    colunas_treino = joblib.load('colunas_modelo.pkl')
-    return modelo, colunas_treino
+# ----------------------------------------------------------------
+# Estado da sessão (guarda os dataframes entre interações)
+# ----------------------------------------------------------------
+if "df_tratado" not in st.session_state:
+    st.session_state.df_tratado = None
 
-try:
-    modelo, colunas_treino = carregar_artefatos()
-    artefatos_carregados = True
-except Exception as e:
-    artefatos_carregados = False
-    st.error(f"Erro ao carregar os artefatos do modelo: {e}")
+NOMES_BASES = ["Base 1", "Base 2", "Base 3", "Base 4"]
 
-# --- SUAS FUNÇÕES GLOBAIS DE TRATAMENTO ---
-NULOS_DISFARÇADOS = ['#n/d', '-', '', '?', 'n/a', 'na', 'null', 'none', '-']
+# ==================================================================
+# 1. UPLOAD DOS 4 ARQUIVOS
+# ==================================================================
+st.header("1. Upload dos arquivos")
 
-def limpar_nulos(df):
-    for col in df.select_dtypes(include='object').columns:
-        df[col] = df[col].astype(str).str.strip().str.lower()
-        df[col] = df[col].replace(NULOS_DISFARÇADOS, np.nan)
-    return df
+col1, col2, col3, col4 = st.columns(4)
+uploaders = {}
+colunas_ui = [col1, col2, col3, col4]
 
-def imputar_amostra(serie):
-    nulos = serie.isnull()
-    serie = serie.copy()
-    if nulos.sum() > 0:
-        serie.loc[nulos] = serie.dropna().sample(nulos.sum(), replace=True).values
-    return serie
+for nome, col in zip(NOMES_BASES, colunas_ui):
+    with col:
+        uploaders[nome] = st.file_uploader(nome, type="csv", key=f"upload_{nome}")
 
-def imputar_categorica(serie):
-    nulos = serie.isnull()
-    serie = serie.copy()
-    if nulos.sum() > 0:
-        frequencias = serie.value_counts(normalize=True)
-        serie.loc[nulos] = np.random.choice(frequencias.index, size=nulos.sum(), p=frequencias.values)
-    return serie
+arquivos_prontos = all(uploaders[n] is not None for n in NOMES_BASES)
 
-def parse_data(val):
-    try:
-        return parser.parse(str(val), dayfirst=True)
-    except:
-        return pd.NaT
+if not arquivos_prontos:
+    st.info("Envie os 4 arquivos CSV para continuar.")
+    st.stop()
 
-def normalizar_texto_mkt(valor):
-    if pd.isna(valor):
-        return np.nan
-    v = str(valor).strip()
-    if v.upper() in ['', '-', '?', '#N/D', 'NAN']:
-        return np.nan
-    return v.title()
-
-def moda_segura(x):
-    m = x.mode()
-    return m.iloc[0] if not m.empty else np.nan
-
-def normalizar_categoria_con(valor):
-    if pd.isna(valor):
-        return np.nan
-    return str(valor).strip().lower().replace('.', '')
-
-def normalizar_canal_con(valor):
-    if pd.isna(valor):
-        return np.nan
-    v = str(valor).strip()
-    if v.lower() in ['', '-', '?', '#n/d', 'nan']:
-        return np.nan
-    return v.title()
-
-def normalizar_metodo_con(valor):
-    if pd.isna(valor):
-        return np.nan
-    v = str(valor).strip().lower().replace('_', ' ').replace('-', ' ')
-    return re.sub(r'\s+', ' ', v)
-
-def limpar_valor_monetario_con(valor):
-    if pd.isna(valor):
-        return np.nan
-    v = str(valor).strip().replace('R$', '').replace(' ', '').strip()
-    tem_ponto = '.' in v
-    tem_virgula = ',' in v
-    if tem_ponto and tem_virgula:
-        if v.rfind(',') > v.rfind('.'):
-            v = v.replace('.', '').replace(',', '.')
-        else:
-            v = v.replace(',', '')
-    elif tem_virgula:
-        v = v.replace('.', '').replace(',', '.')
-    elif tem_ponto:
-        partes = v.split('.')
-        if len(partes[-1]) != 2:
-            v = v.replace('.', '')
-    try:
-        return float(v)
-    except ValueError:
-        return np.nan
-
-# --- INTERFACE DO STREAMLIT ---
-st.title("📂 Painel de Predição de Churn — PRT Seguradora")
-st.markdown("### Processamento de Bases Brutas & Análise de Churn em Lote")
-
-arquivos_carregados = st.file_uploader(
-    "Arraste as 4 bases brutas (.csv) simultaneamente aqui:", 
-    type=["csv"], 
-    accept_multiple_files=True
-)
-
-if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregados:
-    st.info("As 4 bases brutas foram detectadas! Iniciando a esteira de Engenharia de Dados...")
-    
-    tabelas = {}
-    hoje = pd.Timestamp.today()
-    
-    # Mapeamento dinâmico baseado na estrutura interna de colunas
-    for arquivo in arquivos_carregados:
-        # Detecta o separador correto abrindo uma amostra
-        amostra = arquivo.read(2048).decode('utf-8')
-        arquivo.seek(0)
-        sep = ';' if ';' in amostra and amostra.count(';') > amostra.count(',') else ','
-        
-        df_temp = pd.read_csv(arquivo, sep=sep)
-        colunas_temp = [c.lower() for c in df_temp.columns]
-        
-        if 'data_nascimento' in colunas_temp or 'escolaridade' in colunas_temp:
-            tabelas['cadastro'] = df_temp
-        elif 'customer_key' in colunas_temp or 'num_sinistros_historico' in colunas_temp:
-            tabelas['sinistros'] = df_temp
-        elif 'score_engajamento_digital' in colunas_temp or 'km_anual_estimado' in colunas_temp:
-            tabelas['marketing'] = df_temp
-        elif 'cod_individuo' in colunas_temp or 'valor_premio_anual' in colunas_temp or 'tipo_cobertura' in colunas_temp:
-            tabelas['contratos'] = df_temp
-
-    if len(tabelas) < 4:
-        st.error("Erro no mapeamento. Certifique-se de fazer o upload de todas as 4 bases distintas (Cadastro, Sinistros, Marketing e Contratos).")
-    else:
+# ----------------------------------------------------------------
+# Leitura com detecção simples de separador/encoding
+# ----------------------------------------------------------------
+def ler_csv_robusto(arquivo):
+    """Tenta ler o CSV com combinações comuns de separador e encoding."""
+    tentativas = [
+        {"sep": ",", "encoding": "utf-8"},
+        {"sep": ";", "encoding": "utf-8"},
+        {"sep": ",", "encoding": "latin1"},
+        {"sep": ";", "encoding": "latin1"},
+    ]
+    for params in tentativas:
         try:
-            # ============================================================
-            # 1. TRATAMENTO — CADASTRO DOS CLIENTES
-            # ============================================================
-            df_cad = tabelas['cadastro'].copy()
-            df_cad = limpar_nulos(df_cad)
-            df_cad.rename(columns={'Id_cliente': 'id_cliente', 'ID_Cliente': 'id_cliente', 'Id_Cliente': 'id_cliente'}, errors='ignore', inplace=True)
-            
-            df_cad['idade'] = pd.to_numeric(df_cad['idade'], errors='coerce').astype('Int64')
-            df_cad['data_nascimento'] = df_cad['data_nascimento'].apply(parse_data)
-            mask_data = df_cad['idade'].isnull() & df_cad['data_nascimento'].notnull()
-            df_cad.loc[mask_data, 'idade'] = df_cad.loc[mask_data, 'data_nascimento'].apply(lambda x: int((hoje - x).days / 365.25))
-            df_cad.drop(columns='data_nascimento', errors='ignore', inplace=True)
-            
-            mapa_genero = {'masc': 'M', 'm': 'M', 'masculino': 'M', 'f': 'F', 'fem': 'F', 'feminino': 'F'}
-            df_cad['genero'] = df_cad['genero'].astype(str).str.strip().str.lower().map(mapa_genero)
-            
-            mapa_ec = {'c': 'casado', 'casado': 'casado', 'married': 'casado', 'casado(a)': 'casado', 's': 'solteiro', 'solt': 'solteiro', 'single': 'solteiro', 'solteiro(a)': 'solteiro'}
-            df_cad['estado_civil'] = df_cad['estado_civil'].astype(str).str.strip().str.lower().map(mapa_ec)
-            
-            mapa_filhos = {'sim': 1, 'true': 1, 's': 1, '1': 1, 'nao': 0, 'não': 0, 'n': 0, 'false': 0, '0': 0}
-            df_cad['tem_filhos'] = df_cad['tem_filhos'].astype(str).str.strip().str.lower().map(mapa_filhos)
-            
-            df_cad['qtd_dependentes'] = pd.to_numeric(df_cad['qtd_dependentes'], errors='coerce').astype('Int64')
-            df_cad['escolaridade'] = df_cad['escolaridade'].astype(str).str.strip().str.lower().str.capitalize()
-            
-            for col in ['renda_anual', 'valor_imovel']:
-                if col in df_cad.columns:
-                    df_cad[col] = df_cad[col].astype(str).str.strip().str.replace(r'r\$', '', regex=True).str.replace(r'\s', '', regex=True).str.replace(r'\.(?=\d{3})', '', regex=True).str.replace(',', '.', regex=False)
-                    df_cad[col] = pd.to_numeric(df_cad[col], errors='coerce')
-            
-            df_cad['possui_imovel'] = df_cad['possui_imovel'].astype(str).str.strip().str.lower().replace(NULOS_DISFARÇADOS + ['nan'], np.nan)
-            df_cad['possui_imovel'] = pd.to_numeric(df_cad['possui_imovel'], errors='coerce').astype('Int64')
-            
-            df_cad['tempo_residencia_anos'] = pd.to_numeric(df_cad['tempo_residencia_anos'], errors='coerce')
-            df_cad['tempo_residencia_anos'] = df_cad['tempo_residencia_anos'].fillna(df_cad['tempo_residencia_anos'].median()).astype(int)
-            
-            for col in ['genero', 'estado_civil', 'tem_filhos', 'escolaridade']:
-                df_cad[col] = imputar_categorica(df_cad[col])
-            for col in ['idade', 'renda_anual', 'valor_imovel', 'qtd_dependentes', 'possui_imovel']:
-                df_cad[col] = imputar_amostra(df_cad[col])
-            
-            df_cad.drop_duplicates(subset='id_cliente', keep='first', inplace=True)
-            
-            for col in ['renda_anual', 'valor_imovel']:
-                Q1 = df_cad[col].quantile(0.25)
-                Q3 = df_cad[col].quantile(0.75)
-                IQR = Q3 - Q1
-                df_cad[col] = df_cad[col].clip(lower=max(0, Q1 - 1.5 * IQR), upper=Q3 + 1.5 * IQR)
-                
-            df_cad['idade'] = df_cad['idade'].astype(float).where(df_cad['idade'].between(18, 100), other=np.nan)
-            df_cad['idade'] = imputar_amostra(df_cad['idade'])
-            df_cad['tem_filhos'] = df_cad['tem_filhos'].astype(int)
-            df_cad['possui_imovel'] = df_cad['possui_imovel'].astype(int)
-            df_cad.loc[(df_cad['tem_filhos'] == 0) & (df_cad['qtd_dependentes'] > 0), 'tem_filhos'] = 1
+            arquivo.seek(0)
+            df = pd.read_csv(arquivo, **params)
+            if df.shape[1] > 1:  # se leu só 1 coluna, provavelmente sep errado
+                return df
+        except Exception:
+            continue
+    arquivo.seek(0)
+    return pd.read_csv(arquivo)  # última tentativa, deixa o erro estourar se falhar
 
-            # ============================================================
-            # 2. TRATAMENTO — ATENDIMENTO / SINISTROS
-            # ============================================================
-            df_sin = tabelas['sinistros'].copy()
-            df_sin = limpar_nulos(df_sin)
-            df_sin.rename(columns={'customer_key': 'id_cliente', 'ID': 'id_cliente'}, errors='ignore', inplace=True)
-            df_sin['id_cliente'] = df_sin['id_cliente'].astype(float).astype(int).astype(str).str.strip()
-            
-            df_sin['canal_preferencial_contato'] = imputar_categorica(df_sin['canal_preferencial_contato'])
-            
-            cols_num_sin = ['num_reclamacoes_12m', 'num_sinistros_historico', 'dias_ultimo_contato', 'tempo_medio_resposta_dias', 'num_ligacoes_suporte_12m', 'num_acessos_app_mes', 'satisfacao_nps']
-            for col in cols_num_sin:
-                df_sin[col] = pd.to_numeric(df_sin[col], errors='coerce')
-                df_sin[col] = imputar_amostra(df_sin[col])
-            
-            df_sin['tempo_resolucao_ultimo_sinistro'] = pd.to_numeric(df_sin['tempo_resolucao_ultimo_sinistro'], errors='coerce')
-            df_sin.loc[df_sin['tempo_resolucao_ultimo_sinistro'].isnull() & df_sin['data_ultimo_sinistro'].isnull(), 'tempo_resolucao_ultimo_sinistro'] = 0
-            df_sin['tempo_resolucao_ultimo_sinistro'] = imputar_amostra(df_sin['tempo_resolucao_ultimo_sinistro'])
-            
-            df_sin['data_ultimo_sinistro'] = pd.to_datetime(df_sin['data_ultimo_sinistro'], errors='coerce', format='mixed', dayfirst=True)
-            df_sin.loc[df_sin['data_ultimo_sinistro'] > hoje, 'data_ultimo_sinistro'] = pd.NaT
-            
-            mask_data_sin = df_sin['data_ultimo_sinistro'].isna() & (df_sin['tempo_resolucao_ultimo_sinistro'] > 0)
-            if mask_data_sin.sum() > 0 and not df_sin['data_ultimo_sinistro'].dropna().empty:
-                df_sin.loc[mask_data_sin, 'data_ultimo_sinistro'] = df_sin['data_ultimo_sinistro'].dropna().sample(mask_data_sin.sum(), replace=True).values
-            
-            df_sin.loc[~df_sin['satisfacao_nps'].between(0, 10), 'satisfacao_nps'] = np.nan
-            df_sin['satisfacao_nps'] = imputar_amostra(df_sin['satisfacao_nps']).astype(int)
-            
-            Q1_dias = df_sin['dias_ultimo_contato'].quantile(0.25)
-            Q3_dias = df_sin['dias_ultimo_contato'].quantile(0.75)
-            df_sin['dias_ultimo_contato'] = df_sin['dias_ultimo_contato'].clip(lower=max(0, Q1_dias - 1.5 * (Q3_dias - Q1_dias)), upper=Q3_dias + 1.5 * (Q3_dias - Q1_dias))
-            
-            for col in ['num_reclamacoes_12m', 'num_sinistros_historico', 'num_ligacoes_suporte_12m', 'num_acessos_app_mes']:
-                df_sin[col] = df_sin[col].astype(int)
-                
-            df_sin['dias_desde_ultimo_sinistro'] = (hoje - df_sin['data_ultimo_sinistro']).dt.days.fillna(0).astype(int)
-            df_sin['teve_sinistro'] = np.where(df_sin['num_sinistros_historico'] > 0, 1, 0)
-            df_sin.drop_duplicates(subset='id_cliente', keep='first', inplace=True)
 
-            # ============================================================
-            # 3. TRATAMENTO — ENGAJAMENTO MARKETING
-            # ============================================================
-            df_mkt = tabelas['marketing'].copy()
-            df_mkt['ID'] = df_mkt['ID'].astype(str).str.strip()
-            df_mkt.rename(columns={"ID" : "id_cliente"}, inplace=True)
-            
-            numeric_cols_mkt = ['score_engajamento_digital', 'indicou_clientes', 'renovacoes_consecutivas', 'indice_relacionamento', 'ano_veiculo', 'km_anual_estimado', 'ultimo_login_portal_dias', 'score_propensao_churn', 'cluster_sugerido_crm']
-            for col in numeric_cols_mkt:
-                df_mkt[col] = pd.to_numeric(df_mkt[col], errors='coerce')
-                
-            for col in ['tipo_veiculo', 'segmento_marketing', 'regiao_vendas']:
-                df_mkt[col] = df_mkt[col].apply(normalizar_texto_mkt)
-                
-            df_mkt['regiao_vendas'] = df_mkt['regiao_vendas'].replace({'Oeste': 'Centro-Oeste', 'Regiao Oeste': 'Centro-Oeste', 'Centro': 'Centro-Oeste'})
-            df_mkt['nunca_logou'] = df_mkt['ultimo_login_portal_dias'].isna().astype(int)
-            df_mkt['ultimo_login_portal_dias'] = df_mkt['ultimo_login_portal_dias'].fillna(df_mkt['ultimo_login_portal_dias'].median())
-            
-            df_mkt['indicou_clientes'] = df_mkt['indicou_clientes'].fillna(0)
-            df_mkt['renovacoes_consecutivas'] = df_mkt['renovacoes_consecutivas'].fillna(0)
-            
-            df_mkt['regiao_vendas'] = df_mkt['regiao_vendas'].fillna(df_mkt['regiao_vendas'].mode()[0] if not df_mkt['regiao_vendas'].mode().empty else 'Ignorado')
-            df_mkt['segmento_marketing'] = df_mkt['segmento_marketing'].fillna(df_mkt['segmento_marketing'].mode()[0] if not df_mkt['segmento_marketing'].mode().empty else 'Ignorado')
-            
-            df_mkt['tipo_veiculo'] = df_mkt['tipo_veiculo'].fillna(df_mkt.groupby('segmento_marketing')['tipo_veiculo'].transform(moda_segura))
-            df_mkt['tipo_veiculo'] = df_mkt['tipo_veiculo'].fillna(df_mkt['tipo_veiculo'].mode()[0] if not df_mkt['tipo_veiculo'].mode().empty else 'Ignorado')
-            
-            for col in ['ano_veiculo', 'km_anual_estimado']:
-                df_mkt[col] = df_mkt[col].fillna(df_mkt.groupby('tipo_veiculo')[col].transform('median')).fillna(df_mkt[col].median())
-                
-            for col in ['score_engajamento_digital', 'indice_relacionamento']:
-                df_mkt.loc[df_mkt['nunca_logou'] == 1, col] = df_mkt.loc[df_mkt['nunca_logou'] == 1, col].fillna(0)
-                df_mkt[col] = df_mkt[col].fillna(df_mkt[col].median())
-                
-            df_mkt['score_propensao_churn'] = df_mkt['score_propensao_churn'].fillna(df_mkt['score_propensao_churn'].median())
-            df_mkt['cluster_sugerido_crm'] = df_mkt['cluster_sugerido_crm'].fillna(df_mkt['cluster_sugerido_crm'].mode()[0] if not df_mkt['cluster_sugerido_crm'].mode().empty else 0)
-            df_mkt.drop_duplicates(subset='id_cliente', keep='first', inplace=True)
+dfs_brutos = {nome: ler_csv_robusto(uploaders[nome]) for nome in NOMES_BASES}
 
-            # ============================================================
-            # 4. TRATAMENTO — CONTRATOS E APÓLICES
-            # ============================================================
-            df_con = tabelas['contratos'].copy()
-            df_con['cod_individuo'] = df_con['cod_individuo'].astype(str).str.replace('IND-', '', regex=False).str.strip()
-            df_con.rename(columns={"cod_individuo": "id_cliente"}, inplace=True)
-            
-            mapa_cobertura = {'premium': 'Premium', 'prem': 'Premium', 'básica': 'Básica', 'basica': 'Básica', 'basic': 'Básica', 'padrão': 'Padrão', 'padrao': 'Padrão', 'std': 'Padrão', 'plus': 'Plus'}
-            df_con['tipo_cobertura'] = df_con['tipo_cobertura'].apply(normalizar_categoria_con).map(mapa_cobertura)
-            df_con['canal_aquisicao'] = df_con['canal_aquisicao'].apply(normalizar_canal_con)
-            
-            mapa_metodo = {'boleto': 'Boleto', 'bol': 'Boleto', 'boleto bancario': 'Boleto', 'cartao': 'Cartao', 'cartão': 'Cartao', 'cc': 'Cartao', 'cartao credito': 'Cartao', 'debito auto': 'Debito', 'debito automatico': 'Debito', 'debito_auto': 'Debito', 'debito': 'Debito', 'deb auto': 'Debito', 'pix': 'Pix'}
-            df_con['metodo_pagamento'] = df_con['metodo_pagamento'].apply(normalizar_metodo_con).map(mapa_metodo)
-            
-            mapa_pagamento = {'em dia': 1, 'ok': 1, 'sim': 1, 's': 1, '1': 1, 'nao': 0, 'não': 0, 'n': 0, '0': 0, 'atrasado': 0}
-            df_con['pagamento_em_dia'] = df_con['pagamento_em_dia'].apply(lambda x: mapa_pagamento.get(str(x).strip().lower(), np.nan)).astype('float64')
-            
-            colunas_monetarias = ['valor_premio_anual', 'valor_cobertura_total', 'franquia_media']
-            for col in colunas_monetarias:
-                df_con[col] = df_con[col].apply(limpar_valor_monetario_con)
-                
-            df_con['data_primeira_apolice'] = pd.to_datetime(df_con['data_primeira_apolice'], format='mixed', errors='coerce')
-            
-            for col in ['num_apolices_ativas', 'tempo_cliente_dias', 'num_produtos_contratados', 'desconto_aplicado_pct']:
-                df_con[col] = pd.to_numeric(df_con[col], errors='coerce')
-            df_con["desconto_aplicado_pct"] = df_con["desconto_aplicado_pct"] * 100
-            
-            # Limites Realistas e Imputações
-            for col, (min_val, max_val) in {'valor_premio_anual': (0, 500_000), 'valor_cobertura_total': (0, 2_000_000), 'tempo_cliente_dias': (0, 10_950)}.items():
-                df_con.loc[(df_con[col] < min_val) | (df_con[col] > max_val), col] = np.nan
-                
-            df_con["num_apolices_ativas"] = df_con["num_apolices_ativas"].fillna(df_con["num_apolices_ativas"].median())
-            df_con["num_produtos_contratados"] = df_con["num_produtos_contratados"].fillna(df_con["num_produtos_contratados"].median())
-            df_con["desconto_aplicado_pct"] = df_con["desconto_aplicado_pct"].fillna(df_con["desconto_aplicado_pct"].median())
-            
-            df_con["tipo_cobertura"] = df_con["tipo_cobertura"].fillna(df_con["tipo_cobertura"].mode()[0])
-            df_con["canal_aquisicao"] = df_con["canal_aquisicao"].fillna(df_con["canal_aquisicao"].mode()[0])
-            df_con["metodo_pagamento"] = df_con["metodo_pagamento"].fillna(df_con["metodo_pagamento"].mode()[0])
-            df_con["pagamento_em_dia"] = df_con["pagamento_em_dia"].fillna(df_con["pagamento_em_dia"].mode()[0])
-            
-            for col in colunas_monetarias:
-                df_con[col] = df_con[col].fillna(df_con.groupby("tipo_cobertura")[col].transform("median"))
-                
-            DATA_REFERENCIA = pd.Timestamp("2026-06-01")
-            df_con["tempo_cliente_dias"] = df_con["tempo_cliente_dias"].fillna((DATA_REFERENCIA - df_con["data_primeira_apolice"]).dt.days)
-            df_con = df_con.dropna(subset=["tempo_cliente_dias"])
-            df_con["data_primeira_apolice"] = df_con["data_primeira_apolice"].fillna(DATA_REFERENCIA - pd.to_timedelta(df_con["tempo_cliente_dias"], unit="D"))
-            
-            df_con.drop_duplicates(subset='id_cliente', keep='first', inplace=True)
-            
-            # Winsorização de Outliers
-            CONFIG_OUTLIERS = {'valor_premio_anual': 2.5, 'valor_cobertura_total': 2.5, 'franquia_media': 1.5, 'tempo_cliente_dias': 1.5, 'desconto_aplicado_pct': 1.5}
-            for col, fator in CONFIG_OUTLIERS.items():
-                Q1 = df_con[col].quantile(0.25)
-                Q3 = df_con[col].quantile(0.75)
-                lim_inf = max(0, Q1 - fator * (Q3 - Q1))
-                lim_sup = Q3 + fator * (Q3 - Q1)
-                if col == 'desconto_aplicado_pct': lim_sup = min(100, lim_sup)
-                df_con[col] = df_con[col].clip(lower=lim_inf, upper=lim_sup)
+with st.expander("Pré-visualização dos dados brutos"):
+    for nome in NOMES_BASES:
+        st.subheader(nome)
+        st.write(f"Shape: {dfs_brutos[nome].shape}")
+        st.dataframe(dfs_brutos[nome].head())
 
-            # ============================================================
-            # 5. CONSOLIDAÇÃO DA BASE ÚNICA (MERGES)
-            # ============================================================
-            df_cad['id_cliente'] = df_cad['id_cliente'].astype(str).str.strip()
-            df_sin['id_cliente'] = df_sin['id_cliente'].astype(str).str.strip()
-            df_mkt['id_cliente'] = df_mkt['id_cliente'].astype(str).str.strip()
-            df_con['id_cliente'] = df_con['id_cliente'].astype(str).str.strip()
+# ==================================================================
+# 2. TRATAMENTO INDIVIDUAL DE CADA BASE
+# ==================================================================
+st.header("2. Tratamento de cada base")
 
-            df_final = df_cad.merge(df_sin, on='id_cliente', how='left')
-            df_final = df_final.merge(df_mkt, on='id_cliente', how='left')
-            df_final = df_final.merge(df_con, on='id_cliente', how='left')
+dfs_tratados = {}
 
-            # Preenchimento de nulos remanescentes
-            for col in df_final.columns:
-                if df_final[col].dtype in ['float64', 'int64', 'Int64']:
-                    df_final[col] = df_final[col].fillna(0)
-                else:
-                    df_final[col] = df_final[col].fillna('ignorado')
+for nome in NOMES_BASES:
+    st.subheader(nome)
+    df = dfs_brutos[nome].copy()
 
-            st.success("🎉 Processamento completo! Todas as 4 bases brutas foram unificadas via Pipeline.")
+    c1, c2, c3 = st.columns(3)
 
-            # ============================================================
-            # 6. EXECUÇÃO DAS PREDIÇÕES DO MODELO
-            # ============================================================
-            for col in colunas_treino:
-                if col not in df_final.columns:
-                    df_final[col] = 0
+    # --- 2.1 Padronizar nomes de colunas ---
+    with c1:
+        padronizar_colunas = st.checkbox(
+            "Padronizar nomes de colunas (minúsculo, sem espaço)",
+            value=True, key=f"pad_{nome}",
+        )
+    if padronizar_colunas:
+        df.columns = (
+            df.columns.str.strip()
+            .str.lower()
+            .str.normalize("NFKD").str.encode("ascii", errors="ignore").str.decode("utf-8")
+            .str.replace(" ", "_", regex=False)
+        )
 
-            X_scoring = df_final[colunas_treino]
-            probabilidades = modelo.predict_proba(X_scoring)[:, 1]
-            
-            df_resultado = df_final[['id_cliente']].copy()
-            df_resultado['Risco Churn (%)'] = (probabilidades * 100).round(2)
-            df_resultado['Status de Risco'] = np.where(probabilidades > 70, '🚨 Alto Risco', np.where(probabilidades > 30, '⚠️ Risco Moderado', '✅ Estável'))
+    # --- 2.2 Remover duplicatas ---
+    with c2:
+        remover_dup = st.checkbox("Remover linhas duplicadas", value=True, key=f"dup_{nome}")
+    if remover_dup:
+        antes = len(df)
+        df = df.drop_duplicates()
+        st.caption(f"Duplicatas removidas: {antes - len(df)}")
 
-            st.markdown("### 📊 Relatório Técnico de Risco de Churn")
-            st.dataframe(df_resultado.sort_values(by='Risco Churn (%)', ascending=False), use_container_width=True)
+    # --- 2.3 Estratégia para valores faltantes ---
+    with c3:
+        estrategia_na = st.selectbox(
+            "Valores faltantes",
+            ["Não tratar", "Remover linhas com NA", "Preencher numéricas com mediana",
+             "Preencher categóricas com 'desconhecido'", "Preencher numéricas e categóricas"],
+            key=f"na_{nome}",
+        )
 
-            csv_saida = df_resultado.to_csv(index=False).encode('utf-8')
-            st.download_button(label="📥 Baixar Painel Consolidado de Churn (.CSV)", data=csv_saida, file_name="relatorio_final_churn_prt.csv", mime="text/csv")
+    if estrategia_na == "Remover linhas com NA":
+        df = df.dropna()
+    elif estrategia_na == "Preencher numéricas com mediana":
+        num_cols = df.select_dtypes(include="number").columns
+        df[num_cols] = df[num_cols].fillna(df[num_cols].median())
+    elif estrategia_na == "Preencher categóricas com 'desconhecido'":
+        cat_cols = df.select_dtypes(include="object").columns
+        df[cat_cols] = df[cat_cols].fillna("desconhecido")
+    elif estrategia_na == "Preencher numéricas e categóricas":
+        num_cols = df.select_dtypes(include="number").columns
+        cat_cols = df.select_dtypes(include="object").columns
+        df[num_cols] = df[num_cols].fillna(df[num_cols].median())
+        df[cat_cols] = df[cat_cols].fillna("desconhecido")
 
-        except Exception as e:
-            st.error(f"Erro inesperado durante a execução da esteira de dados: {e}")
+    # --- 2.4 Conversão manual de tipos (opcional) ---
+    with st.expander(f"Ajustar tipos de coluna — {nome}"):
+        colunas_para_numero = st.multiselect(
+            "Forçar conversão para número", df.columns.tolist(), key=f"tonum_{nome}"
+        )
+        for col in colunas_para_numero:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
-elif arquivos_carregados:
-    st.warning(f"Aguardando o carregamento dos arquivos restantes. Você inseriu apenas {len(arquivos_carregados)} de 4 bases necessárias.")
+        colunas_para_data = st.multiselect(
+            "Forçar conversão para data", df.columns.tolist(), key=f"todate_{nome}"
+        )
+        for col in colunas_para_data:
+            df[col] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+
+    st.dataframe(df.head())
+    st.divider()
+
+    dfs_tratados[nome] = df
+
+# ==================================================================
+# 3. MERGE DAS 4 BASES
+# ==================================================================
+st.header("3. Unificação das bases (merge)")
+
+st.markdown("Selecione a coluna-chave (ex: `id_cliente`) em cada base para o merge.")
+
+chaves = {}
+cols_merge = st.columns(4)
+for nome, col in zip(NOMES_BASES, cols_merge):
+    with col:
+        chaves[nome] = st.selectbox(
+            f"Chave — {nome}", dfs_tratados[nome].columns.tolist(), key=f"chave_{nome}"
+        )
+
+tipo_merge = st.radio(
+    "Tipo de merge", ["inner (só quem existe em todas)", "outer (mantém todos, gera NA)",
+                       "left (mantém tudo da Base 1)"],
+    horizontal=True,
+)
+tipo_merge_map = {"inner (só quem existe em todas)": "inner",
+                  "outer (mantém todos, gera NA)": "outer",
+                  "left (mantém tudo da Base 1)": "left"}
+
+if st.button("Executar tratamento e unificar bases", type="primary"):
+    try:
+        df_final = dfs_tratados["Base 1"].rename(columns={chaves["Base 1"]: "chave_merge"})
+        for nome in NOMES_BASES[1:]:
+            df_aux = dfs_tratados[nome].rename(columns={chaves[nome]: "chave_merge"})
+            df_final = df_final.merge(
+                df_aux, on="chave_merge", how=tipo_merge_map[tipo_merge], suffixes=("", f"_{nome}")
+            )
+
+        st.session_state.df_tratado = df_final
+        st.success(f"Bases unificadas com sucesso! Shape final: {df_final.shape}")
+
+    except Exception as e:
+        st.error(f"Erro ao unificar as bases: {e}")
+
+# ==================================================================
+# 4. RESULTADO E DOWNLOAD
+# ==================================================================
+if st.session_state.df_tratado is not None:
+    st.header("4. Base tratada e unificada")
+    df_final = st.session_state.df_tratado
+
+    st.dataframe(df_final.head(50))
+
+    st.write("Resumo de valores faltantes por coluna:")
+    st.dataframe(df_final.isna().sum().rename("qtd_nulos").to_frame())
+
+    csv_saida = df_final.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Baixar base tratada (CSV)", csv_saida, "base_tratada.csv", "text/csv"
+    )
+
+    st.info(
+        "Próximo passo: essa base (`st.session_state.df_tratado`) será usada na etapa "
+        "de clusterização assim que os arquivos .pkl estiverem prontos."
+    )
