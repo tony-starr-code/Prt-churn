@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import cloudpickle
 import joblib
 import re
 from dateutil import parser
@@ -8,10 +9,12 @@ from dateutil import parser
 # CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="PRT Seguradora - Churn", layout="wide")
 
-# CACHE DOS ARTEFATOS DO MODELO
+# CACHE DOS ARTEFATOS DO MODELO (AGORA UTILIZANDO CLOUDPICKLE PARA O MLFLOW)
 @st.cache_resource
 def carregar_artefatos():
-    modelo = joblib.load('modelo_xgb_churn.pkl')
+    # Carrega o modelo binário do MLflow usando cloudpickle para evitar o travamento
+    with open('model.pkl', 'rb') as f:
+        modelo = cloudpickle.load(f)
     colunas_treino = joblib.load('colunas_modelo.pkl')
     return modelo, colunas_treino
 
@@ -26,7 +29,7 @@ except Exception as e:
 NULOS_DISFARÇADOS = ['#n/d', '-', '', '?', 'n/a', 'na', 'null', 'none', '-']
 
 def limpar_nulos(df):
-    for col in df.select_dtypes(include='object').columns:
+    for col in df.select_dtypes(include=['object', 'string']).columns:
         df[col] = df[col].astype(str).str.strip().str.lower()
         df[col] = df[col].replace(NULOS_DISFARÇADOS, np.nan)
     return df
@@ -123,7 +126,6 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
     
     # Mapeamento dinâmico baseado na estrutura interna de colunas
     for arquivo in arquivos_carregados:
-        # Detecta o separador correto abrindo uma amostra
         amostra = arquivo.read(2048).decode('utf-8')
         arquivo.seek(0)
         sep = ';' if ';' in amostra and amostra.count(';') > amostra.count(',') else ','
@@ -361,16 +363,26 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             # ============================================================
             # 6. EXECUÇÃO DAS PREDIÇÕES DO MODELO
             # ============================================================
+            # Garante a existência de todas as colunas esperadas pelo modelo original
             for col in colunas_treino:
                 if col not in df_final.columns:
                     df_final[col] = 0
 
             X_scoring = df_final[colunas_treino]
-            probabilidades = modelo.predict_proba(X_scoring)[:, 1]
+            
+            # Executa a inferência utilizando a estrutura integrada do MLflow
+            try:
+                # Caso o pipeline do MLflow retorne direto as probabilidades pelo .predict()
+                probabilidades = modelo.predict(X_scoring)
+                # Se retornar classes binárias (0 ou 1), tentamos o predict_proba
+                if hasattr(modelo, "predict_proba") and len(np.unique(probabilidades)) <= 2:
+                    probabilidades = modelo.predict_proba(X_scoring)[:, 1]
+            except:
+                probabilidades = modelo.predict_proba(X_scoring)[:, 1]
             
             df_resultado = df_final[['id_cliente']].copy()
-            df_resultado['Risco Churn (%)'] = (probabilidades * 100).round(2)
-            df_resultado['Status de Risco'] = np.where(probabilidades > 70, '🚨 Alto Risco', np.where(probabilidades > 30, '⚠️ Risco Moderado', '✅ Estável'))
+            df_resultado['Risco Churn (%)'] = (probabilidades * 100 if probabilidades.max() <= 1.0 else probabilidades).round(2)
+            df_resultado['Status de Risco'] = np.where(df_resultado['Risco Churn (%)'] > 70.0, '🚨 Alto Risco', np.where(df_resultado['Risco Churn (%)'] > 30.0, '⚠️ Risco Moderado', '✅ Estável'))
 
             st.markdown("### 📊 Relatório Técnico de Risco de Churn")
             st.dataframe(df_resultado.sort_values(by='Risco Churn (%)', ascending=False), use_container_width=True)
