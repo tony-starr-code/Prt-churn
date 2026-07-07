@@ -119,7 +119,6 @@ def limpar_valor_monetario_con(valor):
         return np.nan
 
 # --- INTERFACE DO STREAMLIT ---
-st.title("📂 Painel de Predição de Churn — PRT Seguradora")
 st.markdown("### Processamento de Bases Brutas & Análise de Churn em Lote")
 
 arquivos_carregados = st.file_uploader(
