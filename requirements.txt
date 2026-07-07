@@ -1,9 +1,23 @@
-streamlit==1.38.0
-pandas==2.2.2
-numpy==1.26.4
+# Dependências do modelo LightGBM treinado no MLflow
+mlflow==3.11.1
+cloudpickle==3.1.2
+lightgbm==4.6.0
 scikit-learn==1.7.2
-joblib==1.4.2
-xgboost==2.1.1
-lightgbm==4.5.0
-python-dateutil==2.9.0.post0
-cloudpickle==3.0.0
+numpy==1.26.4
+pandas==2.3.3
+
+# Dependências do Streamlit (pra rodar o app)
+streamlit>=1.32
+joblib>=1.3
+python-dateutil>=2.8.0
+
+# Utilitários (opcionais mas recomendados)
+defusedxml==0.7.1
+graphviz==0.21
+lz4==4.4.5
+matplotlib==3.10.9
+packaging==25.0
+psutil==5.9.8
+pyarrow==21.0.0
+pyyaml==6.0.3
+scipy==1.16.3
