@@ -10,6 +10,14 @@ from dateutil import parser
 
 # CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="PRT Seguradora - Churn", layout="wide")
+col1, col2 = st.columns([1,5])
+
+with col1:
+    st.image("logo.png", width=120)
+
+with col2:
+    st.title("Painel de Predição de Churn")
+    st.caption("Sistema Inteligente de Predição • PRT Seguradora")
 
 # CACHE DOS ARTEFATOS DO MODELO (AGORA UTILIZANDO CLOUDPICKLE PARA O MLFLOW)
 @st.cache_resource
