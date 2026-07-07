@@ -351,24 +351,19 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             # ============================================================
             # 5. CONSOLIDAÇÃO DA BASE ÚNICA (MERGES)
             # ============================================================
-            # Padronização final (defensiva, redundante mas inofensiva) antes do merge
-            df_cad['id_cliente'] = df_cad['id_cliente'].astype(str).str.strip()
-            df_sin['id_cliente'] = df_sin['id_cliente'].astype(str).str.strip()
-            df_mkt['id_cliente'] = df_mkt['id_cliente'].astype(str).str.strip()
-            df_con['id_cliente'] = df_con['id_cliente'].astype(str).str.strip()
+            # Padroniza o campo id_cliente em todas as bases
+            for df in [df_cad, df_sin, df_mkt, df_con]:
+                if 'id_cliente' in df.columns:
+                    df['id_cliente'] = df['id_cliente'].astype(str).str.strip()
 
-            # >>> DIAGNÓSTICO: mostra shape e duplicatas de cada base antes do merge <<<
-            with st.expander("🔍 Diagnóstico pré-merge (linhas e duplicatas de id_cliente)"):
-                for nome, df_ in [("cadastro", df_cad), ("sinistros", df_sin),
-                                   ("marketing", df_mkt), ("contratos", df_con)]:
-                    dups = df_['id_cliente'].duplicated().sum()
-                    st.write(f"**{nome}**: {df_.shape[0]} linhas | {dups} id_cliente duplicados")
-
-            # >>> CORREÇÃO: validate='one_to_one' faz o merge falhar rápido (com erro claro)
-            # em vez de gerar um produto cartesiano silencioso que trava o app depois <<<
-            df_final = df_cad.merge(df_sin, on='id_cliente', how='left', validate='one_to_one')
-            df_final = df_final.merge(df_mkt, on='id_cliente', how='left', validate='one_to_one')
-            df_final = df_final.merge(df_con, on='id_cliente', how='left', validate='one_to_one')
+            # Merge das quatro bases
+            df_final = (
+                df_con
+                .merge(df_mkt, on='id_cliente', how='outer')
+                .merge(df_cad, on='id_cliente', how='outer')
+                .merge(df_sin, on='id_cliente', how='outer')
+                .copy()
+            )
 
             st.write(f"Shape final após merges: {df_final.shape}")
 
