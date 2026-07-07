@@ -398,7 +398,7 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             
             st.write(f"Gerando predições dummy para {X_scoring.shape[0]} linhas...")
             t0 = time.time()
-            probabilidades = np.random.uniform(0, 1, len(X_scoring))
+            probabilidades = modelo.predict_proba(X_scoring)[:, 1]
             st.write(f"✅ Predições geradas em {time.time() - t0:.2f}s")
 
             df_resultado = df_final[['id_cliente']].copy()
