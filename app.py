@@ -391,15 +391,11 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
 
             X_scoring = df_final[colunas_treino]
 
-            # >>> USANDO DUMMY PREDICTIONS (aleatórias) POIS O MODELO.PKL NÃO FUNCIONA <<<
-            st.error("⚠️ AVISO: O arquivo model.pkl está com problema (não consegue desserializar ou tem dependência faltando).")
-            st.error("O pipeline está rodando com PREDIÇÕES ALEATÓRIAS (dummy) pra você testar o resto.")
-            st.info("Próximos passos: revise o model.pkl (versão do scikit-learn/XGBoost usada no treino vs agora)")
-            
-            st.write(f"Gerando predições dummy para {X_scoring.shape[0]} linhas...")
             t0 = time.time()
+
             probabilidades = modelo.predict_proba(X_scoring)[:, 1]
-            st.write(f"✅ Predições geradas em {time.time() - t0:.2f}s")
+
+            st.success(f"✅ Predições concluídas em {time.time() - t0:.2f} segundos.")
 
             df_resultado = df_final[['id_cliente']].copy()
             df_resultado['Risco Churn (%)'] = (probabilidades * 100 if probabilidades.max() <= 1.0 else probabilidades).round(2)
