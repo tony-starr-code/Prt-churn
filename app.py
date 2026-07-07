@@ -391,50 +391,15 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
 
             X_scoring = df_final[colunas_treino]
 
-            # >>> TESTE COM TIMEOUT: tenta rodar o modelo com limite de tempo <<<
-            from concurrent.futures import ThreadPoolExecutor, TimeoutError
+            # >>> USANDO DUMMY PREDICTIONS (aleatórias) POIS O MODELO.PKL NÃO FUNCIONA <<<
+            st.error("⚠️ AVISO: O arquivo model.pkl está com problema (não consegue desserializar ou tem dependência faltando).")
+            st.error("O pipeline está rodando com PREDIÇÕES ALEATÓRIAS (dummy) pra você testar o resto.")
+            st.info("Próximos passos: revise o model.pkl (versão do scikit-learn/XGBoost usada no treino vs agora)")
             
-            st.write("⏱️ Testando tempo com amostra de 1000 linhas (timeout: 30s)...")
-            t_amostra = time.time()
-            timeout_segundos = 30
-            modelo_funciona = False
-            
-            try:
-                with ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(modelo.predict, X_scoring.head(1000))
-                    _ = future.result(timeout=timeout_segundos)
-                tempo_amostra = time.time() - t_amostra
-                st.write(f"✅ 1000 linhas levaram {tempo_amostra:.2f}s")
-                modelo_funciona = True
-            except TimeoutError:
-                st.error(f"❌ Timeout: modelo demorou mais de {timeout_segundos}s em apenas 1000 linhas.")
-                st.error("Isso indica problema de compatibilidade de versão ou modelo customizado que não funciona.")
-                st.warning("⚠️ Usando predições aleatórias (dummy) para completar o pipeline...")
-                modelo_funciona = False
-            except Exception as e_amostra:
-                st.error(f"❌ Erro ao rodar modelo: {e_amostra}")
-                st.warning("⚠️ Usando predições aleatórias (dummy) para completar o pipeline...")
-                modelo_funciona = False
-
-            # >>> RODANDO PREDIÇÃO COMPLETA OU DUMMY <<<
-            st.write(f"Processando {X_scoring.shape[0]} linhas x {X_scoring.shape[1]} colunas...")
+            st.write(f"Gerando predições dummy para {X_scoring.shape[0]} linhas...")
             t0 = time.time()
-            
-            if modelo_funciona:
-                with st.spinner("Calculando predições de churn (modelo real)..."):
-                    try:
-                        probabilidades = modelo.predict(X_scoring)
-                        if hasattr(modelo, "predict_proba") and len(np.unique(probabilidades)) <= 2:
-                            probabilidades = modelo.predict_proba(X_scoring)[:, 1]
-                    except Exception as e_pred:
-                        st.warning(f"Erro na predição completa: {e_pred}")
-                        probabilidades = np.random.uniform(0, 1, len(X_scoring))
-            else:
-                with st.spinner("Gerando predições dummy (aleatórias)..."):
-                    probabilidades = np.random.uniform(0, 1, len(X_scoring))
-                    st.info("💡 Predições aleatórias foram usadas. Ajuste a versão do scikit-learn/XGBoost/etc no seu ambiente.")
-            
-            st.write(f"Processamento levou {time.time() - t0:.1f}s")
+            probabilidades = np.random.uniform(0, 1, len(X_scoring))
+            st.write(f"✅ Predições geradas em {time.time() - t0:.2f}s")
 
             df_resultado = df_final[['id_cliente']].copy()
             df_resultado['Risco Churn (%)'] = (probabilidades * 100 if probabilidades.max() <= 1.0 else probabilidades).round(2)
