@@ -374,7 +374,7 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             df_diagnostico = pd.DataFrame(dados_diagnostico)
 
             # EXPANDER DO DIAGNÓSTICO DE QUALIDADE DE DADOS
-            with st.expanders("📊 Diagnóstico Técnico: Qualidade de Dados (Antes vs Depois)"):
+            with st.expander("📊 Diagnóstico Técnico: Qualidade de Dados (Antes vs Depois)"):
                 st.markdown("A tabela abaixo detalha o volume de valores ausentes ou corrompidos tratados pela nossa esteira automatizada.")
                 
                 col_diag_tab, col_diag_graf = st.columns([1.2, 1])
