@@ -9,7 +9,7 @@ st.set_page_config(page_title="PRT Seguradora - Métricas do Modelo", layout="wi
 st.title("📈 Performance e Métricas do Modelo")
 st.markdown("Detalhamento técnico da versão atual do modelo homologado em produção (`v3_LightGBM_Model`).")
 
----
+
 
 # 1. VISÃO GERAL EM CARDS (MÉTRICAS CHAVE)
 st.subheader("📊 Indicadores de Assertividade")
@@ -24,7 +24,7 @@ with col3:
 with col4:
     st.metric(label="F1-Score (Equilíbrio)", value="85.4%", delta="+1.8%")
 
----
+
 
 # 2. DETALHAMENTO DA PERFORMANCE (MATRIZ DE CONFUSÃO)
 st.subheader("🎯 Matriz de Confusão (Validação)")
@@ -65,7 +65,6 @@ with col_chart:
     )
     st.altair_chart(chart + text, use_container_width=True)
 
----
 
 # 3. IMPORTÂNCIA DAS VARIÁVEIS (FEATURE IMPORTANCE DO LIGHTGBM)
 st.subheader("🔑 Quais fatores mais pesam para o cliente cancelar?")
