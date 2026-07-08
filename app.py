@@ -529,12 +529,6 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             X_scoring = df_final[colunas_treino]
 
             t0 = time.time()
-            st.write("NaNs no X_scoring:")
-            nans = X_scoring.isna().sum()
-            st.write(nans[nans > 0])
-
-            st.write("Tipos:")
-            st.write(X_scoring.dtypes)
             probabilidades = modelo.predict_proba(X_scoring)[:, 1]
             tempo_predicao = time.time() - t0
 
