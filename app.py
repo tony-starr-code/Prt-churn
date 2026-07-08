@@ -229,6 +229,7 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
         )
     else:
         try:
+
             # ============================================================
             # 1. TRATAMENTO — CADASTRO DOS CLIENTES
             # ============================================================
@@ -241,6 +242,9 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             mask_data = df_cad["idade"].isnull() & df_cad["data_nascimento"].notnull()
             df_cad.loc[mask_data, "idade"] = df_cad.loc[mask_data, "data_nascimento"].apply(lambda x: int((hoje - x).days / 365.25))
             df_cad.drop(columns="data_nascimento", errors="ignore", inplace=True)
+            # idade fora da faixa plausível -> NaN (regra de negócio fixa, não estatística do lote: mantido)
+            df_cad["idade"] = df_cad["idade"].astype(float).where(df_cad["idade"].between(18, 100), other=np.nan)
+            df_cad["idade"] = df_cad["idade"].astype("Int64")  # MUDANÇA: sem imputar_amostra aqui — NaN segue pro pipeline treinado
 
             mapa_genero = {"masc": "M", "m": "M", "masculino": "M", "f": "F", "fem": "F", "feminino": "F"}
             df_cad["genero"] = df_cad["genero"].astype(str).str.strip().str.lower().map(mapa_genero)
@@ -250,6 +254,7 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
 
             mapa_filhos = {"sim": 1, "true": 1, "s": 1, "1": 1, "nao": 0, "não": 0, "n": 0, "false": 0, "0": 0}
             df_cad["tem_filhos"] = df_cad["tem_filhos"].astype(str).str.strip().str.lower().map(mapa_filhos)
+            df_cad["tem_filhos"] = pd.to_numeric(df_cad["tem_filhos"], errors="coerce").astype("Int64")  # MUDANÇA: Int64 nullable (antes virava int só depois do fillna via imputar_categorica)
 
             df_cad["qtd_dependentes"] = pd.to_numeric(df_cad["qtd_dependentes"], errors="coerce").astype("Int64")
             df_cad["escolaridade"] = df_cad["escolaridade"].astype(str).str.strip().str.lower().str.capitalize()
@@ -259,32 +264,40 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                 if col in df_cad.columns:
                     df_cad[col] = df_cad[col].astype(str).str.strip().str.replace(r"r\$", "", regex=True).str.replace(r"\s", "", regex=True).str.replace(r"\.(?=\d{3})", "", regex=True).str.replace(",", ".", regex=False)
                     df_cad[col] = pd.to_numeric(df_cad[col], errors="coerce")
+                    # MUDANÇA: removido o clip por IQR calculado no lote (Q1/Q3 do teste != Q1/Q3 do treino).
+                    # Se quiser manter algum corte de sanidade aqui, use limites FIXOS (constantes de negócio,
+                    # como já é feito em df_con/df_mkt com LIM_REALISTAS/LIMITES_NEGOCIO), nunca quantile() do df carregado.
 
             df_cad["possui_imovel"] = df_cad["possui_imovel"].astype(str).str.strip().str.lower().replace(NULOS_DISFARÇADOS + ["nan"], np.nan)
             df_cad["possui_imovel"] = pd.to_numeric(df_cad["possui_imovel"], errors="coerce").astype("Int64")
 
             df_cad["tempo_residencia_anos"] = pd.to_numeric(df_cad["tempo_residencia_anos"], errors="coerce")
-            df_cad["tempo_residencia_anos"] = df_cad["tempo_residencia_anos"].fillna(df_cad["tempo_residencia_anos"].median()).astype(int)
+            # MUDANÇA: removido fillna(mediana do lote) + astype(int). Mantido como float com NaN.
 
-            for col in ["genero", "estado_civil", "tem_filhos", "escolaridade"]:
-                df_cad[col] = imputar_categorica(df_cad[col])
-            for col in ["idade", "renda_anual", "valor_imovel", "qtd_dependentes", "possui_imovel"]:
-                df_cad[col] = imputar_amostra(df_cad[col])
+            # MUDANÇA: bloco inteiro removido —
+            #   for col in ["genero", "estado_civil", "tem_filhos", "escolaridade"]:
+            #       df_cad[col] = imputar_categorica(df_cad[col])
+            #   for col in ["idade", "renda_anual", "valor_imovel", "qtd_dependentes", "possui_imovel"]:
+            #       df_cad[col] = imputar_amostra(df_cad[col])
+            # Essas duas funções amostram/imputam a partir da distribuição do PRÓPRIO df_cad carregado.
+            # No teste, isso usa estatística do teste; no treino, usava estatística do treino — são
+            # transformações DIFERENTES aplicadas com o mesmo nome de função. É a causa mais provável
+            # da divergência de distribuição no PCA. Essas colunas ("idade", "genero", "estado_civil",
+            # "tem_filhos", "escolaridade", "renda_anual", "valor_imovel", "qtd_dependentes",
+            # "possui_imovel") já estão listadas em COLUNAS_NUMERICAS_SENTINELA_NEG1 /
+            # COLUNAS_CATEGORICAS do new_pipeline.py — o ImputadorUniversal (fit no treino) é quem
+            # deve preencher os NaN, com a moda/distribuição do treino, não do teste.
 
             df_cad["id_cliente"] = df_cad["id_cliente"].astype(str).str.strip()
-            df_cad.drop_duplicates(subset="id_cliente", keep="first", inplace=True)
+            df_cad.drop_duplicates(subset="id_cliente", keep="first", inplace=True)  # mantido: é por linha, não por estatística do lote
 
-            for col in ["renda_anual", "valor_imovel"]:
-                Q1 = df_cad[col].quantile(0.25)
-                Q3 = df_cad[col].quantile(0.75)
-                IQR = Q3 - Q1
-                df_cad[col] = df_cad[col].clip(lower=max(0, Q1 - 1.5 * IQR), upper=Q3 + 1.5 * IQR)
-
-            df_cad["idade"] = df_cad["idade"].astype(float).where(df_cad["idade"].between(18, 100), other=np.nan)
-            df_cad["idade"] = imputar_amostra(df_cad["idade"])
-            df_cad["tem_filhos"] = df_cad["tem_filhos"].astype(int)
-            df_cad["possui_imovel"] = df_cad["possui_imovel"].astype(int)
+            # MUDANÇA: removido — tem_filhos/possui_imovel não são mais forçados a astype(int) aqui,
+            # porque isso quebraria com NaN ainda presente. Ficam Int64 (nullable) até o pipeline imputar.
             df_cad.loc[(df_cad["tem_filhos"] == 0) & (df_cad["qtd_dependentes"] > 0), "tem_filhos"] = 1
+            # nota: essa regra de negócio (quem tem dependente > 0 tem filho) é determinística e foi mantida.
+            # Ela só não roda para linhas onde tem_filhos ou qtd_dependentes ainda são NaN — o que é o
+            # comportamento correto: não se deve inferir uma regra de negócio sobre um dado ausente.
+
 
             # ============================================================
             # 2. TRATAMENTO — ATENDIMENTO / SINISTROS
@@ -294,37 +307,52 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             df_sin.rename(columns={"customer_key": "id_cliente", "ID": "id_cliente"}, errors="ignore", inplace=True)
             df_sin["id_cliente"] = df_sin["id_cliente"].astype(float).astype(int).astype(str).str.strip()
 
-            df_sin["canal_preferencial_contato"] = imputar_categorica(df_sin["canal_preferencial_contato"])
+            # MUDANÇA: removida a imputação categórica do canal de contato aqui —
+            #   df_sin["canal_preferencial_contato"] = imputar_categorica(df_sin["canal_preferencial_contato"])
+            # "canal_preferencial_contato" está em COLUNAS_CATEGORICAS no new_pipeline.py: o
+            # ImputadorUniversal treinado já imputa pela moda DO TREINO.
 
             cols_num_sin = ["num_reclamacoes_12m", "num_sinistros_historico", "dias_ultimo_contato", "tempo_medio_resposta_dias", "num_ligacoes_suporte_12m", "num_acessos_app_mes", "satisfacao_nps"]
             for col in cols_num_sin:
                 df_sin[col] = pd.to_numeric(df_sin[col], errors="coerce")
-                df_sin[col] = imputar_amostra(df_sin[col])
+                # MUDANÇA: removido imputar_amostra(df_sin[col]) — idem ao comentário acima, essas colunas
+                # também estão em COLUNAS_NUMERICAS_SENTINELA_NEG1.
 
             df_sin["tempo_resolucao_ultimo_sinistro"] = pd.to_numeric(df_sin["tempo_resolucao_ultimo_sinistro"], errors="coerce")
             df_sin.loc[df_sin["tempo_resolucao_ultimo_sinistro"].isnull() & df_sin["data_ultimo_sinistro"].isnull(), "tempo_resolucao_ultimo_sinistro"] = 0
-            df_sin["tempo_resolucao_ultimo_sinistro"] = imputar_amostra(df_sin["tempo_resolucao_ultimo_sinistro"])
+            # MUDANÇA: removido imputar_amostra(...) restante — o que sobrar de NaN aqui (sinistro existiu
+            # mas o tempo de resolução não foi preenchido) é um NaN genuíno e deve ir pro pipeline treinado.
 
             df_sin["data_ultimo_sinistro"] = pd.to_datetime(df_sin["data_ultimo_sinistro"], errors="coerce", format="mixed", dayfirst=True)
             df_sin.loc[df_sin["data_ultimo_sinistro"] > hoje, "data_ultimo_sinistro"] = pd.NaT
 
-            mask_data_sin = df_sin["data_ultimo_sinistro"].isna() & (df_sin["tempo_resolucao_ultimo_sinistro"] > 0)
-            if mask_data_sin.sum() > 0 and not df_sin["data_ultimo_sinistro"].dropna().empty:
-                df_sin.loc[mask_data_sin, "data_ultimo_sinistro"] = df_sin["data_ultimo_sinistro"].dropna().sample(mask_data_sin.sum(), replace=True).values
+            # MUDANÇA: removido o preenchimento de data por amostragem do PRÓPRIO df_sin carregado:
+            #   df_sin.loc[mask_data_sin, "data_ultimo_sinistro"] = df_sin["data_ultimo_sinistro"].dropna().sample(...)
+            # Isso sorteava uma data de dentro do lote de teste — instável com poucos registros e
+            # inconsistente com o que foi feito no treino. "dias_desde_ultimo_sinistro" (calculado abaixo)
+            # é a feature que realmente importa pro modelo; para linhas sem data, ele fica NaN e é
+            # imputado pelo pipeline treinado, igual às outras numéricas.
 
             df_sin.loc[~df_sin["satisfacao_nps"].between(0, 10), "satisfacao_nps"] = np.nan
-            df_sin["satisfacao_nps"] = imputar_amostra(df_sin["satisfacao_nps"]).astype(int)
+            # MUDANÇA: removido .astype(int) após imputar_amostra — mantido como Int64 nullable.
+            df_sin["satisfacao_nps"] = df_sin["satisfacao_nps"].astype("Int64")
 
-            Q1_dias = df_sin["dias_ultimo_contato"].quantile(0.25)
-            Q3_dias = df_sin["dias_ultimo_contato"].quantile(0.75)
-            df_sin["dias_ultimo_contato"] = df_sin["dias_ultimo_contato"].clip(lower=max(0, Q1_dias - 1.5 * (Q3_dias - Q1_dias)), upper=Q3_dias + 1.5 * (Q3_dias - Q1_dias))
+            # MUDANÇA: removido o clipping de "dias_ultimo_contato" por IQR calculado no lote:
+            #   Q1_dias = df_sin["dias_ultimo_contato"].quantile(0.25)  # <- estatística do teste
+            #   Q3_dias = df_sin["dias_ultimo_contato"].quantile(0.75)
+            #   df_sin["dias_ultimo_contato"] = df_sin["dias_ultimo_contato"].clip(...)
+            # Mesma razão do clipping removido em df_cad: os limites têm que vir do treino, não do teste.
 
             for col in ["num_reclamacoes_12m", "num_sinistros_historico", "num_ligacoes_suporte_12m", "num_acessos_app_mes"]:
-                df_sin[col] = df_sin[col].astype(int)
+                df_sin[col] = df_sin[col].astype("Int64")  # MUDANÇA: Int64 nullable em vez de int (sem fillna prévio, pode ter NaN)
 
-            df_sin["dias_desde_ultimo_sinistro"] = (hoje - df_sin["data_ultimo_sinistro"]).dt.days.fillna(0).astype(int)
-            df_sin["teve_sinistro"] = np.where(df_sin["num_sinistros_historico"] > 0, 1, 0)
+            df_sin["dias_desde_ultimo_sinistro"] = (hoje - df_sin["data_ultimo_sinistro"]).dt.days.astype("Int64")
+            # MUDANÇA: removido o .fillna(0) aqui. "Nunca teve sinistro" != "sinistro há 0 dias" — eram
+            # valores semanticamente diferentes sendo colapsados no mesmo número. Deixa NaN e o pipeline
+            # treinado decide o que fazer (ou usa a flag "teve_sinistro" abaixo, que já existe pra isso).
+            df_sin["teve_sinistro"] = (df_sin["num_sinistros_historico"] > 0).astype("Int64")
             df_sin.drop_duplicates(subset="id_cliente", keep="first", inplace=True)
+
 
             # ============================================================
             # 3. TRATAMENTO — ENGAJAMENTO MARKETING
@@ -341,28 +369,33 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                 df_mkt[col] = df_mkt[col].apply(normalizar_texto_mkt)
 
             df_mkt["regiao_vendas"] = df_mkt["regiao_vendas"].replace({"Oeste": "Centro-Oeste", "Regiao Oeste": "Centro-Oeste", "Centro": "Centro-Oeste"})
-            df_mkt["nunca_logou"] = df_mkt["ultimo_login_portal_dias"].isna().astype(int)
-            df_mkt["ultimo_login_portal_dias"] = df_mkt["ultimo_login_portal_dias"].fillna(df_mkt["ultimo_login_portal_dias"].median())
+            df_mkt["nunca_logou"] = df_mkt["ultimo_login_portal_dias"].isna().astype(int)  # mantido: é a flag que o pipeline espera (ORIGENS/fantasma_mkt não cobre isso, é feature própria)
 
-            df_mkt["indicou_clientes"] = df_mkt["indicou_clientes"].fillna(0)
-            df_mkt["renovacoes_consecutivas"] = df_mkt["renovacoes_consecutivas"].fillna(0)
+            # MUDANÇA: bloco de imputação inteiro removido daqui —
+            #   df_mkt["ultimo_login_portal_dias"] = df_mkt["ultimo_login_portal_dias"].fillna(mediana do lote)
+            #   df_mkt["indicou_clientes"] = df_mkt["indicou_clientes"].fillna(0)
+            #   df_mkt["renovacoes_consecutivas"] = df_mkt["renovacoes_consecutivas"].fillna(0)
+            #   df_mkt["regiao_vendas"] = df_mkt["regiao_vendas"].fillna(moda do lote)
+            #   df_mkt["segmento_marketing"] = df_mkt["segmento_marketing"].fillna(moda do lote)
+            #   df_mkt["tipo_veiculo"] = df_mkt["tipo_veiculo"].fillna(moda por grupo do lote) ...
+            #   for col in ["ano_veiculo", "km_anual_estimado"]: fillna(mediana por grupo do lote)
+            #   for col in ["score_engajamento_digital", "indice_relacionamento"]: fillna(mediana do lote)
+            #   df_mkt["score_propensao_churn"] = ...fillna(mediana do lote)
+            #   df_mkt["cluster_sugerido_crm"] = ...fillna(moda do lote)
+            # Todas essas colunas (score_engajamento_digital, indicou_clientes, renovacoes_consecutivas,
+            # indice_relacionamento, ultimo_login_portal_dias, nunca_logou, segmento_marketing,
+            # regiao_vendas, tipo_veiculo) estão cobertas pelo ImputadorUniversal do new_pipeline.py
+            # (COLUNAS_NUMERICAS_SENTINELA_NEG1 / COLUNAS_CATEGORICAS). "indicou_clientes" e
+            # "renovacoes_consecutivas" não precisam de fillna(0) manual: 0 é o valor real de "não indicou
+            # ninguém" só quando a linha realmente tem 0 informado — quando é NaN (não respondeu), deve
+            # seguir NaN pro imputador, não virar 0 artificialmente.
+            # "cluster_sugerido_crm" nem chega a entrar no modelo: é removida em
+            # RemovedorDeColunas(colunas_para_remover) dentro do próprio new_pipeline.py — não há motivo
+            # pra gastar lógica de imputação com ela aqui.
 
-            df_mkt["regiao_vendas"] = df_mkt["regiao_vendas"].fillna(df_mkt["regiao_vendas"].mode()[0] if not df_mkt["regiao_vendas"].mode().empty else "Ignorado")
-            df_mkt["segmento_marketing"] = df_mkt["segmento_marketing"].fillna(df_mkt["segmento_marketing"].mode()[0] if not df_mkt["segmento_marketing"].mode().empty else "Ignorado")
-
-            df_mkt["tipo_veiculo"] = df_mkt["tipo_veiculo"].fillna(df_mkt.groupby("segmento_marketing")["tipo_veiculo"].transform(moda_segura))
-            df_mkt["tipo_veiculo"] = df_mkt["tipo_veiculo"].fillna(df_mkt["tipo_veiculo"].mode()[0] if not df_mkt["tipo_veiculo"].mode().empty else "Ignorado")
-
-            for col in ["ano_veiculo", "km_anual_estimado"]:
-                df_mkt[col] = df_mkt[col].fillna(df_mkt.groupby("tipo_veiculo")[col].transform("median")).fillna(df_mkt[col].median())
-
-            for col in ["score_engajamento_digital", "indice_relacionamento"]:
-                df_mkt.loc[df_mkt["nunca_logou"] == 1, col] = df_mkt.loc[df_mkt["nunca_logou"] == 1, col].fillna(0)
-                df_mkt[col] = df_mkt[col].fillna(df_mkt[col].median())
-
-            df_mkt["score_propensao_churn"] = df_mkt["score_propensao_churn"].fillna(df_mkt["score_propensao_churn"].median())
-            df_mkt["cluster_sugerido_crm"] = df_mkt["cluster_sugerido_crm"].fillna(df_mkt["cluster_sugerido_crm"].mode()[0] if not df_mkt["cluster_sugerido_crm"].mode().empty else 0)
+            df_mkt["id_cliente"] = df_mkt["id_cliente"].astype(str).str.strip()  # MUDANÇA: padronização que faltava no rename original (id_cliente vindo de "ID" já tratado acima, mantido explícito por clareza)
             df_mkt.drop_duplicates(subset="id_cliente", keep="first", inplace=True)
+
 
             # ============================================================
             # 4. TRATAMENTO — CONTRATOS E APÓLICES
@@ -373,6 +406,11 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
 
             mapa_cobertura = {"premium": "Premium", "prem": "Premium", "básica": "Básica", "basica": "Básica", "basic": "Básica", "padrão": "Padrão", "padrao": "Padrão", "std": "Padrão", "plus": "Premium"}
             df_con["tipo_cobertura"] = df_con["tipo_cobertura"].apply(normalizar_categoria_con).map(mapa_cobertura)
+            # nota: mantido "plus" -> "Premium". O CodificadorOrdinalManual do new_pipeline.py só conhece
+            # {"Básica": 1, "Padrão": 2, "Premium": 3} — se "Plus" ficasse como categoria própria (como no
+            # notebook), o .map(encoding_maps) geraria NaN silencioso pra essa categoria no ordinal encoding.
+            # Esse comportamento do app.py já está correto e compatível com o pipeline treinado.
+
             df_con["canal_aquisicao"] = df_con["canal_aquisicao"].apply(normalizar_canal_con)
 
             mapa_metodo = {"boleto": "Boleto", "bol": "Boleto", "boleto bancario": "Boleto", "cartao": "Cartao", "cartão": "Cartao", "cc": "Cartao", "cartao credito": "Cartao", "debito auto": "Debito", "debito automatico": "Debito", "debito_auto": "Debito", "debito": "Debito", "deb auto": "Debito", "pix": "Pix"}
@@ -391,38 +429,52 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                 df_con[col] = pd.to_numeric(df_con[col], errors="coerce")
             df_con["desconto_aplicado_pct"] = df_con["desconto_aplicado_pct"] * 100
 
+            # Regras de negócio fixas (valores absolutos, não dependem do lote) — mantidas como estavam:
             for col, (min_val, max_val) in {"valor_premio_anual": (0, 500_000), "valor_cobertura_total": (0, 2_000_000), "tempo_cliente_dias": (0, 10_950)}.items():
                 df_con.loc[(df_con[col] < min_val) | (df_con[col] > max_val), col] = np.nan
 
-            df_con["num_apolices_ativas"] = df_con["num_apolices_ativas"].fillna(df_con["num_apolices_ativas"].median())
-            df_con["num_produtos_contratados"] = df_con["num_produtos_contratados"].fillna(df_con["num_produtos_contratados"].median())
-            df_con["desconto_aplicado_pct"] = df_con["desconto_aplicado_pct"].fillna(df_con["desconto_aplicado_pct"].median())
-
-            df_con["tipo_cobertura"] = df_con["tipo_cobertura"].fillna(df_con["tipo_cobertura"].mode()[0])
-            df_con["canal_aquisicao"] = df_con["canal_aquisicao"].fillna(df_con["canal_aquisicao"].mode()[0])
-            df_con["metodo_pagamento"] = df_con["metodo_pagamento"].fillna(df_con["metodo_pagamento"].mode()[0])
-            df_con["pagamento_em_dia"] = df_con["pagamento_em_dia"].fillna(df_con["pagamento_em_dia"].mode()[0])
-
-            for col in colunas_monetarias:
-                df_con[col] = df_con[col].fillna(df_con.groupby("tipo_cobertura")[col].transform("median"))
+            # MUDANÇA: removidos todos os fillna(mediana/moda do lote) desta seção —
+            #   df_con["num_apolices_ativas"] = ...fillna(mediana do lote)
+            #   df_con["num_produtos_contratados"] = ...fillna(mediana do lote)
+            #   df_con["desconto_aplicado_pct"] = ...fillna(mediana do lote)
+            #   df_con["tipo_cobertura"] = ...fillna(moda do lote)
+            #   df_con["canal_aquisicao"] = ...fillna(moda do lote)
+            #   df_con["metodo_pagamento"] = ...fillna(moda do lote)
+            #   df_con["pagamento_em_dia"] = ...fillna(moda do lote)
+            #   for col in colunas_monetarias: fillna(mediana por grupo tipo_cobertura do lote)
+            # Todas essas colunas estão em COLUNAS_NUMERICAS_SENTINELA_NEG1 / COLUNAS_CATEGORICAS /
+            # ORIGENS["fantasma_contratos"] do new_pipeline.py — é o ImputadorUniversal treinado quem
+            # deve preencher, com a moda/distribuição do treino.
 
             DATA_REFERENCIA = pd.Timestamp("2026-06-01")
             df_con["tempo_cliente_dias"] = df_con["tempo_cliente_dias"].fillna((DATA_REFERENCIA - df_con["data_primeira_apolice"]).dt.days)
-            df_con = df_con.dropna(subset=["tempo_cliente_dias"])
+            # MUDANÇA: removido o dropna(subset=["tempo_cliente_dias"]).
+            # Descartar a linha inteira quando os dois (data e tempo_cliente_dias) estão ausentes é
+            # aceitável ao construir a base de TREINO (você decide fora do fluxo de produção quais
+            # linhas entram no treino). Em INFERÊNCIA isso é perigoso: silenciosamente sumir com
+            # clientes do lote de teste (ele nem aparece no resultado final, o que é diferente de
+            # "aparecer como outlier"). Deixe o NaN seguir para o pipeline treinado.
             df_con["data_primeira_apolice"] = df_con["data_primeira_apolice"].fillna(DATA_REFERENCIA - pd.to_timedelta(df_con["tempo_cliente_dias"], unit="D"))
 
             df_con["id_cliente"] = df_con["id_cliente"].astype(str).str.strip()
             df_con.drop_duplicates(subset="id_cliente", keep="first", inplace=True)
 
-            CONFIG_OUTLIERS = {"valor_premio_anual": 2.5, "valor_cobertura_total": 2.5, "franquia_media": 1.5, "tempo_cliente_dias": 1.5, "desconto_aplicado_pct": 1.5}
-            for col, fator in CONFIG_OUTLIERS.items():
-                Q1 = df_con[col].quantile(0.25)
-                Q3 = df_con[col].quantile(0.75)
-                lim_inf = max(0, Q1 - fator * (Q3 - Q1))
-                lim_sup = Q3 + fator * (Q3 - Q1)
-                if col == "desconto_aplicado_pct":
-                    lim_sup = min(100, lim_sup)
-                df_con[col] = df_con[col].clip(lower=lim_inf, upper=lim_sup)
+            # MUDANÇA: bloco de winsorização por IQR removido inteiramente —
+            #   CONFIG_OUTLIERS = {...}
+            #   for col, fator in CONFIG_OUTLIERS.items():
+            #       Q1 = df_con[col].quantile(0.25)   # <- estatística do LOTE DE TESTE
+            #       Q3 = df_con[col].quantile(0.75)
+            #       ... clip(lower=..., upper=...)
+            # Esse é o ponto mais direto de divergência treino x teste: no notebook, Q1/Q3 foram
+            # calculados uma vez sobre a base de treino inteira para gerar bases_tratadas/. Aqui, a
+            # MESMA fórmula estava recalculando Q1/Q3 sobre qualquer lote novo carregado na interface —
+            # com poucos registros, esses quantis ficam instáveis e os limites de corte mudam a cada
+            # execução, o que desloca a escala das colunas monetárias antes de chegarem ao
+            # StandardScaler (que foi ajustado com a escala do treino). Se quiser manter algum corte de
+            # sanidade aqui, salve os limites (limite_inf/limite_sup) UMA VEZ a partir do treino (ex.:
+            # num JSON) e aplique os mesmos números fixos sempre, em vez de repetir o .quantile() a
+            # cada carga.
+
 
             # ============================================================
             # 5. CONSOLIDAÇÃO DA BASE ÚNICA (MERGES)
@@ -439,11 +491,31 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                 .copy()
             )
 
-            for col in df_final.columns:
-                if df_final[col].dtype in ["float64", "int64", "Int64"]:
-                    df_final[col] = df_final[col].fillna(0)
-            #    else:
-            #        df_final[col] = df_final[col].fillna("ignorado")
+            # MUDANÇA: removido o bloco final —
+            #   for col in df_final.columns:
+            #       if df_final[col].dtype in ["float64", "int64", "Int64"]:
+            #           df_final[col] = df_final[col].fillna(0)
+            #
+            # Esse era o bug mais grave da cadeia: depois do merge outer, um cliente ausente em uma
+            # das 4 bases fica NaN em TODAS as colunas daquela origem — e esse fillna(0) zerava idade,
+            # renda, índice de relacionamento etc. em vez de tratar isso como "dado ausente por
+            # origem". Isso cria registros com valores fisicamente impossíveis (idade 0, renda 0) que,
+            # depois de padronizados com a escala aprendida no treino, aparecem exatamente como os
+            # pontos extremos isolados no PCA.
+            #
+            # O new_pipeline.py já resolve esse cenário de propósito: dentro de ImputadorUniversal,
+            # o dicionário ORIGENS (fantasma_contratos / fantasma_mkt / fantasma_cadastro /
+            # fantasma_sinistros) cria uma flag por origem ANTES de imputar, e "qtd_dados_ausentes" /
+            # "eh_fantasma" resumem isso — exatamente para marcar "esse cliente não tinha dado nessa
+            # tabela" em vez de mascarar com zero. Deixe os NaN em df_final como estão e entregue ao
+            # pipeline treinado:
+            #
+            #     pipeline = joblib.load("caminho/para/pipeline_treinado.pkl")   # já fit() no treino
+            #     df_pronto_para_kmeans = pipeline.transform(df_final)
+            #
+            # Não chame fit() nem fit_transform() aqui — isso re-calcularia distribuições/modas em cima
+            # do teste (voltando ao Bug 1), e no caso do CodificadorAlvoManual/OneHotEncoder mudaria o
+            # próprio espaço de features usado pelo K-means treinado.
 
             st.success(f"🎉 Processamento completo! Base unificada com {df_final.shape[0]} clientes e {df_final.shape[1]} variáveis.")
 

@@ -1,5 +1,10 @@
+import os
+import pickle
+from typing import Optional
+ 
 import pandas as pd
 import numpy as np
+import joblib
 import sklearn
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
@@ -395,3 +400,107 @@ def build_pipeline() -> dict:
 
 
     return {"pipeline": pipeline}
+
+NOME_ARQUIVO_PIPELINE_FIT = "pipeline_clusterizacao_k.pkl"
+ 
+ 
+NOME_ARQUIVO_PIPELINE_FIT = "pipeline_clusterizacao_k4.pkl"
+
+
+def load_fitted_pipeline(caminho: Optional[str] = None) -> Pipeline:
+    """
+    Carrega, do disco, o pipeline de pré-processamento já ajustado (fit).
+
+    O arquivo .pkl deve conter um dicionário, e o pipeline deve estar
+    armazenado na chave "preprocesso".
+
+    Ordem de busca do arquivo:
+      1. Caminho informado no parâmetro `caminho`.
+      2. Variável de ambiente PIPELINE_CLUSTER_FIT_PATH.
+      3. Arquivo `pipeline_clusterizacao_k4.pkl` no diretório de trabalho atual.
+      4. Arquivo `pipeline_clusterizacao_k4.pkl` no mesmo diretório deste módulo.
+
+    Parameters
+    ----------
+    caminho : str, opcional
+        Caminho explícito para o arquivo .pkl.
+
+    Returns
+    -------
+    sklearn.pipeline.Pipeline
+        Pipeline de pré-processamento já ajustado.
+
+    Raises
+    ------
+    FileNotFoundError
+        Se o arquivo não for encontrado.
+
+    KeyError
+        Se o arquivo não contiver a chave "preprocesso".
+
+    TypeError
+        Se o objeto armazenado em "preprocesso" não for um Pipeline.
+    """
+    candidatos = []
+
+    if caminho:
+        candidatos.append(caminho)
+
+    caminho_env = os.environ.get("PIPELINE_CLUSTER_FIT_PATH")
+    if caminho_env:
+        candidatos.append(caminho_env)
+
+    candidatos.append(NOME_ARQUIVO_PIPELINE_FIT)
+    candidatos.append(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            NOME_ARQUIVO_PIPELINE_FIT,
+        )
+    )
+
+    ultimo_erro = None
+
+    for candidato in candidatos:
+        if not candidato or not os.path.exists(candidato):
+            continue
+
+        for loader in (joblib.load,):
+            try:
+                artefato = loader(candidato)
+                break
+            except Exception as erro:
+                ultimo_erro = erro
+        else:
+            try:
+                with open(candidato, "rb") as f:
+                    artefato = pickle.load(f)
+            except Exception as erro:
+                ultimo_erro = erro
+                continue
+
+        if not isinstance(artefato, dict):
+            raise TypeError(
+                f"O arquivo '{candidato}' deve conter um dict, "
+                f"mas contém um objeto do tipo {type(artefato).__name__}."
+            )
+
+        if "preprocessor" not in artefato:
+            raise KeyError(
+                f"O arquivo '{candidato}' não possui a chave 'preprocessor'. "
+                f"Chaves disponíveis: {list(artefato.keys())}"
+            )
+
+        pipeline = artefato["preprocessor"]
+
+        if not isinstance(pipeline, Pipeline):
+            raise TypeError(
+                f"O objeto armazenado em 'preprocesso' é do tipo "
+                f"{type(pipeline).__name__}, mas era esperado um sklearn.pipeline.Pipeline."
+            )
+
+        return pipeline
+
+    raise FileNotFoundError(
+        "Não encontrei o arquivo contendo o pipeline ajustado em nenhum dos "
+        f"caminhos verificados: {[c for c in candidatos if c]}."
+    ) from ultimo_erro
