@@ -210,6 +210,17 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
         )
     else:
         try:
+            # DIAGNÓSTICO DE NULOS: Passo 1 - Captura do Estado Bruto
+            diagnostico_nulos_antes = {}
+            for nome_aba, df_bruto in tabelas.items():
+                for col in df_bruto.columns:
+                    col_normalizada = col.lower().replace("id_cliente", "id_cliente").replace("customer_key", "id_cliente").replace("cod_individuo", "id_cliente").replace("id", "id_cliente")
+                    # Contabiliza nulos tradicionais + nulos disfarçados textuais
+                    nulos_iniciais = df_bruto[col].isnull().sum()
+                    if df_bruto[col].dtype == 'object':
+                        nulos_iniciais += df_bruto[col].astype(str).str.strip().str.lower().isin(NULOS_DISFARÇADOS).sum()
+                    diagnostico_nulos_antes[col_normalizada] = int(nulos_iniciais)
+
             # 1. TRATAMENTO — CADASTRO DOS CLIENTES
             df_cad = tabelas["cadastro"].copy()
             df_cad = limpar_nulos(df_cad)
@@ -248,7 +259,6 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
 
             df_cad["id_cliente"] = df_cad["id_cliente"].astype(str).str.strip()
             df_cad.drop_duplicates(subset="id_cliente", keep="first", inplace=True)
-
             df_cad.loc[(df_cad["tem_filhos"] == 0) & (df_cad["qtd_dependentes"] > 0), "tem_filhos"] = 1
 
             # 2. TRATAMENTO — ATENDIMENTO / SINISTROS
@@ -345,16 +355,67 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
 
             st.success(f"🎉 Processamento completo! Base unificada com {df_final.shape[0]} clientes e {df_final.shape[1]} variáveis.")
 
+            # DIAGNÓSTICO DE NULOS: Passo 2 - Consolidação da Tabela Comparativa
+            total_linhas = len(df_final)
+            dados_diagnostico = []
+            
+            for col in df_final.columns:
+                nulos_antes = diagnostico_nulos_antes.get(col, 0)
+                nulos_depois = int(df_final[col].isnull().sum())
+                
+                dados_diagnostico.append({
+                    "Variável": col,
+                    "Nulos (Antes)": nulos_antes,
+                    "% Nulos (Antes)": round((nulos_antes / total_linhas) * 100, 1) if total_linhas > 0 else 0,
+                    "Nulos (Depois)": nulos_depois,
+                    "% Nulos (Depois)": round((nulos_depois / total_linhas) * 100, 1) if total_linhas > 0 else 0,
+                })
+            
+            df_diagnostico = pd.DataFrame(dados_diagnostico)
+
+            # EXPANDER DO DIAGNÓSTICO DE QUALIDADE DE DADOS
+            with st.expanders("📊 Diagnóstico Técnico: Qualidade de Dados (Antes vs Depois)"):
+                st.markdown("A tabela abaixo detalha o volume de valores ausentes ou corrompidos tratados pela nossa esteira automatizada.")
+                
+                col_diag_tab, col_diag_graf = st.columns([1.2, 1])
+                
+                with col_diag_tab:
+                    st.dataframe(
+                        df_diagnostico.sort_values(by="Nulos (Antes)", ascending=False),
+                        use_container_width=True,
+                        hide_index=True,
+                        height=350
+                    )
+                
+                with col_diag_graf:
+                    df_melt = df_diagnostico.melt(
+                        id_vars=["Variável"], 
+                        value_vars=["% Nulos (Antes)", "% Nulos (Depois)"],
+                        var_name="Momento", 
+                        value_name="Percentual"
+                    )
+                    fig_nulos = px.bar(
+                        df_melt,
+                        x="Percentual",
+                        y="Variável",
+                        color="Momento",
+                        barmode="group",
+                        title="Redução/Evolução Qualitativa de Nulos (%)",
+                        orientation="h",
+                        color_discrete_map={"% Nulos (Antes)": "#EF4444", "% Nulos (Depois)": "#3B82F6"}
+                    )
+                    fig_nulos.update_layout(yaxis={'categoryorder':'total ascending'}, height=350, margin=dict(t=30, b=10, l=10, r=10))
+                    st.plotly_chart(fig_nulos, use_container_width=True)
+
             # PREDIÇÃO DE CHURN
             modelo = artefatos["modelo_churn"]
             colunas_treino = artefatos["colunas_churn"]
 
-            # ATENÇÃO: Preenche apenas na cópia temporária do scoring para evitar poluir dados ausentes reais
             X_scoring = df_final.copy()
             for col in colunas_treino:
                 if col not in X_scoring.columns:
                     X_scoring[col] = 0
-            X_scoring = X_scoring[colunas_treino].fillna(0)  # Garante compatibilidade caso o modelo de Churn não aceite NaN
+            X_scoring = X_scoring[colunas_treino].fillna(0)
 
             t0 = time.time()
             probabilidades = modelo.predict_proba(X_scoring)[:, 1]
@@ -372,7 +433,6 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             pipeline_cluster = artefatos["pipeline_cluster"]
             if pipeline_cluster is not None:
                 try:
-                    # O transform do pipeline já lida corretamente com os NaN intencionais
                     dados_transformados = pipeline_cluster.transform(df_final)
                     
                     if "pipeline_cluster" in artefatos and hasattr(artefatos["pipeline_cluster"], "predict"):
@@ -430,6 +490,7 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                         title="Distribuição de Clientes por Cluster",
                         color_discrete_sequence=px.colors.qualitative.Prism
                     )
+                    fig_cluster.update_layout(height=435)
                     st.plotly_chart(fig_cluster, use_container_width=True)
                 else:
                     st.warning("⚠️ Dados de segmentação indisponíveis devido a problemas no carregamento do pipeline.")
