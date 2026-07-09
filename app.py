@@ -228,31 +228,7 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             "(Cadastro, Sinistros, Marketing e Contratos)."
         )
     else:
-        # ==========================================
-        # DIAGNÓSTICO DE NULOS (ANTES DO TRATAMENTO)
-        # ==========================================
-        diagnostico_nulos_antes = {}
-        NULOS_DISFARÇADOS = ["#n/d", "-", "", "?", "n/a", "na", "null", "none"]
-
-        # Varre cada uma das 4 tabelas brutas mapeadas
-        for nome_tabela, df_bruto in tabelas.items():
-            for col in df_bruto.columns:
-                # Normaliza o nome da coluna para bater com o df_final posterior
-                col_normalizada = (
-                    col.lower()
-                    .replace("customer_key", "id_cliente")
-                    .replace("cod_individuo", "id_cliente")
-                    .replace("id", "id_cliente")
-                )
-                
-                # Contabiliza nulos tradicionais (NaN)
-                nulos_iniciais = df_bruto[col].isnull().sum()
-                
-                # Contabiliza nulos disfarçados se a coluna for do tipo texto
-                if df_bruto[col].dtype == 'object':
-                    nulos_iniciais += df_bruto[col].astype(str).str.strip().str.lower().isin(NULOS_DISFARÇADOS).sum()
-                    
-                diagnostico_nulos_antes[col_normalizada] = int(nulos_iniciais)
+        
         try:
 
             # ============================================================
@@ -541,26 +517,7 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             # Não chame fit() nem fit_transform() aqui — isso re-calcularia distribuições/modas em cima
             # do teste (voltando ao Bug 1), e no caso do CodificadorAlvoManual/OneHotEncoder mudaria o
             # próprio espaço de features usado pelo K-means treinado.
-            # ==========================================
-            # DIAGNÓSTICO DE NULOS (DEPOIS DO TRATAMENTO)
-            # ==========================================
-            total_linhas = len(df_final)
-            dados_diagnostico = []
 
-            for col in df_final.columns:
-                nulos_antes = diagnostico_nulos_antes.get(col, 0)
-                nulos_depois = int(df_final[col].isnull().sum())
-                
-                dados_diagnostico.append({
-                    "Variável": col,
-                    "Nulos (Antes)": nulos_antes,
-                    "% Nulos (Antes)": round((nulos_antes / total_linhas) * 100, 1) if total_linhas > 0 else 0,
-                    "Nulos (Depois)": nulos_depois,
-                    "% Nulos (Depois)": round((nulos_depois / total_linhas) * 100, 1) if total_linhas > 0 else 0,
-                })
-
-            # DataFrame final pronto para exibição (st.dataframe ou print)
-            df_diagnostico = pd.DataFrame(dados_diagnostico).sort_values(by="Nulos (Antes)", ascending=False)
             st.success(f"🎉 Processamento completo! Base unificada com {df_final.shape[0]} clientes e {df_final.shape[1]} variáveis.")
 
             modelo = artefatos["modelo_churn"]
