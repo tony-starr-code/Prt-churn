@@ -12,6 +12,7 @@ import joblib
 from dateutil import parser
 
 import new_pipeline
+from churn_pipe import EngenhariaDeFeatures, RemovedorDeColunas, ImputadorDistribuicao, CriadorFaixaEtaria, RemovedorDeColunas
 
 # CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(
@@ -62,6 +63,7 @@ st.markdown("---")
 def carregar_artefatos():
     artefatos = {
         "modelo_churn": None,
+        "pipeline_churn": None,
         "colunas_churn": None,
         "cluster_dict": None,
         "pipeline_cluster": None,
@@ -69,11 +71,13 @@ def carregar_artefatos():
     }
 
     try:
-        with open("model.pkl", "rb") as f:
-            artefatos["modelo_churn"] = cloudpickle.load(f)
-        artefatos["colunas_churn"] = joblib.load("colunas_modelo.pkl")
+        dicionario_modelo = joblib.load("model.pkl")
+        artefatos["modelo_churn"] = dicionario_modelo["model"]
+        artefatos["pipeline_churn"] = dicionario_modelo["pipeline"]
+        artefatos["colunas_churn"] = dicionario_modelo["columns"]
+
     except Exception as e:
-        artefatos["avisos"].append(f"Erro ao carregar modelo de Churn: {e}")
+        artefatos["avisos"].append(f"Erro ao carregar dicionário/modelo de Churn: {e}")
 
     if os.path.exists("pipeline_clusterizacao_k4.pkl"):
         try:
@@ -564,17 +568,37 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             st.success(f"🎉 Processamento completo! Base unificada com {df_final.shape[0]} clientes e {df_final.shape[1]} variáveis.")
 
             modelo = artefatos["modelo_churn"]
+            pipeline_churn = artefatos["pipeline_churn"]
             colunas_treino = artefatos["colunas_churn"]
 
             for col in colunas_treino:
                 if col not in df_final.columns:
-                    df_final[col] = 0
+                    df_final[col] = np.nan
 
-            X_scoring = df_final[colunas_treino]
+            X_raw = df_final[colunas_treino]
+
+            try:
+                X_scoring = pipeline_churn.transform(X_raw)
+            except Exception as e:
+                st.error(f"Erro ao aplicar o pipeline de preparação do modelo CatBoost: {e}")
+                st.stop()
 
             t0 = time.time()
-            st.write("Quantidade total de NaNs:", X_scoring.isna().sum().sum())
-            st.write(X_scoring.isna().sum()[X_scoring.isna().sum() > 0])
+            
+            # ===================== remover =================================
+            if isinstance(X_scoring, pd.DataFrame):
+                total_nans = X_scoring.isna().sum().sum()
+                cols_com_nan = X_scoring.isna().sum()[X_scoring.isna().sum() > 0]
+            else:
+                total_nans = np.isnan(X_scoring).sum()
+                cols_com_nan = "Formato Numpy Array (verificação por coluna não exibida)"
+
+            st.write("Quantidade de NaNs após o pipeline CatBoost:", total_nans)
+            if total_nans > 0 and isinstance(X_scoring, pd.DataFrame):
+                st.write(cols_com_nan)
+            # ===============================================================
+
+            # 2. Predição com o modelo CatBoost
             probabilidades = modelo.predict_proba(X_scoring)[:, 1]
             tempo_predicao = time.time() - t0
 
