@@ -223,6 +223,7 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             "(Cadastro, Sinistros, Marketing e Contratos)."
         )
     else:
+        
         try:
             LIMITES_OUTLIERS = {
                 # Cadastro
@@ -572,6 +573,8 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             X_scoring = df_final[colunas_treino]
 
             t0 = time.time()
+            st.write("Quantidade total de NaNs:", X_scoring.isna().sum().sum())
+            st.write(X_scoring.isna().sum()[X_scoring.isna().sum() > 0])
             probabilidades = modelo.predict_proba(X_scoring)[:, 1]
             tempo_predicao = time.time() - t0
 
