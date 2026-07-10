@@ -148,5 +148,3 @@ with col_g2:
     ).properties(height=180)
     
     st.altair_chart(grafico_clusters, use_container_width=True)
-
-st.caption("ℹ️ Métricas extraídas via MLflow Tracking do artefato KMeans_k4.")
