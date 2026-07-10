@@ -692,61 +692,6 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                         st.markdown("**Top 5 Clientes mais extremos na projeção atual:**")
                         st.dataframe(df_outliers.head(5)[['id_cliente', 'Cluster', 'PC1', 'PC2', 'Distancia_Origem']], use_container_width=True)
 
-                        # 2. Seletor para investigação profunda
-                        cliente_alvo = st.selectbox(
-                            "Selecione um ID de Cliente para realizar a decomposição matemática:", 
-                            df_outliers['id_cliente'].head(20).tolist()
-                        )
-
-                        if cliente_alvo:
-                            st.markdown(f"#### Raio-X do Cliente: `{cliente_alvo}`")
-                            
-                            # A. Dados Originais
-                            st.markdown("**1. O que entrou no Pipeline (Base Unificada Bruta):**")
-                            raw_row = df_final[df_final['id_cliente'] == cliente_alvo]
-                            st.dataframe(raw_row)
-                            
-                            # B. Dados Transformados
-                            idx_cliente = raw_row.index[0]
-                            if isinstance(dados_processados, pd.DataFrame):
-                                transformed_row = dados_processados.iloc[idx_cliente:idx_cliente+1]
-                                features_names = dados_processados.columns
-                            else:
-                                features_names = pipeline_proc[:-1].get_feature_names_out()
-                                transformed_row = pd.DataFrame(
-                                    dados_processados[idx_cliente:idx_cliente+1], 
-                                    columns=features_names
-                                )
-                            
-                            st.markdown("**2. O que saiu do Pipeline (Após Imputação, Engenharia e Scaling):**")
-                            st.dataframe(transformed_row)
-                            
-                            # C. Reconstrução do PCA
-                            pesos_pc1 = modelo_pca.components_[0]
-                            pesos_pc2 = modelo_pca.components_[1]
-                            valores_z = transformed_row.values[0]
-                            
-                            # Calcular o impacto de cada feature
-                            impacto_pc1 = pesos_pc1 * valores_z
-                            impacto_pc2 = pesos_pc2 * valores_z
-                            
-                            df_impacto = pd.DataFrame({
-                                'Feature': features_names,
-                                'Valor Pós-Pipeline (Z)': valores_z,
-                                'Peso no PC1': pesos_pc1,
-                                'Impacto Real no PC1': impacto_pc1,
-                                'Impacto Real no PC2': impacto_pc2
-                            })
-                            
-                            # Ordenar pelo maior impacto absoluto no PC1
-                            df_impacto['Impacto Absoluto PC1'] = df_impacto['Impacto Real no PC1'].abs()
-                            df_impacto = df_impacto.sort_values(by='Impacto Absoluto PC1', ascending=False).drop(columns=['Impacto Absoluto PC1'])
-                            
-                            st.markdown("**3. Decomposição do Componente: Qual feature causou a explosão?**")
-                            st.error("🚨 **Atenção à primeira linha desta tabela.** Ela mostra a variável exata que puxou o ponto para longe. Olhe a coluna 'Valor Pós-Pipeline (Z)'. Se este valor for maior que 10 ou menor que -10, o StandardScaler falhou ou uma divisão por zero ocorreu na engenharia de features.")
-                            st.dataframe(df_impacto, use_container_width=True, hide_index=True)
-
-
 
                         st.markdown("#### Distribuição de Clientes por Segmento")
                         dist_cluster = df_visualizacao_pca["Cluster"].value_counts().reset_index()
