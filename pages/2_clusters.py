@@ -136,4 +136,5 @@ with col_img_grafico:
     try:
         # Carrega a imagem do repositório utilizando o caminho relativo dentro da pasta pages
         st.image("pages/scatplot.png", caption="Dispersão dos 4 Grupos de Clientes com Redução de Dimensionalidade (PCA)", use_container_width=True)
-
+    except FileNotFoundError:
+        st.warning("⚠️ Imagem 'scatplot.png' não encontrada na pasta 'pages/'. Verifique se o arquivo foi enviado ao repositório.")
