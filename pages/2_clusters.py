@@ -10,11 +10,11 @@ st.title("👥 Análise Comportamental dos Clusters (KMeans_k4)")
 st.markdown("Interpretação estratégica dos 4 ecossistemas de clientes gerados pela nossa inteligência artificial baseada em dados de Cadastro, Contratos, Sinistros e Marketing.")
 
 # Títulos das abas atualizados com as taxas corretas após a inversão
-aba0, aba2, aba3, aba1 = st.tabs([
+aba0, aba1, aba2, aba3 = st.tabs([
     "🚨 Cluster 0 (Taxa: 21.60%)", 
+    "💎 Cluster 1 (Taxa: 3.08%)",
     "✅ Cluster 2 (Taxa: 3.32%)", 
-    "🔥 Cluster 3 (Taxa: 20.55%)", 
-    "💎 Cluster 1 (Taxa: 3.08%)"
+    "🔥 Cluster 3 (Taxa: 20.55%)"
 ])
 
 # ==============================================================================
