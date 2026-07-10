@@ -76,7 +76,7 @@ with col_chart:
     ).properties(
         width=500,  # LARGURA AUMENTADA (era 300)
         height=350, # ALTURA AUMENTADA (era 180)
-        title=alt.TitleParams(text="Matriz de Confusão (Tamanho Aumentado)", anchor='start', fontSize=18) # Título interno opcional
+        title=alt.TitleParams(text="Matriz de Confusão", anchor='start', fontSize=18) # Título interno opcional
     )
     
     # Adicionando o texto dentro da matriz, também maior e com contraste
