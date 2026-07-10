@@ -7,13 +7,14 @@ import altair as alt
 st.set_page_config(page_title="PRT Seguradora - Perfis de Clientes", layout="wide")
 
 st.title("👥 Análise Comportamental dos Clusters (KMeans_k4)")
-st.markdown("Interpretação estratégica dos 4 ecossistemas de clientes gerados pela nossa inteligência artificial baseada em dados de Contratos, Sinistros e Marketing.")
+st.markdown("Interpretação estratégica dos 4 ecossistemas de clientes gerados pela nossa inteligência artificial baseada em dados de Cadastro, Contratos, Sinistros e Marketing.")
 
+# Títulos das abas atualizados com as taxas corretas após a inversão
 aba0, aba2, aba3, aba1 = st.tabs([
-    "🚨 Cluster 0 (Taxa: 21.44%)", 
-    "🔥 Cluster 2 (Taxa: 20.55%)", 
-    "✅ Cluster 3 (Taxa: 3.32%)", 
-    "💎 Cluster 1 (Taxa: 3.10%)"
+    "🚨 Cluster 0 (Taxa: 21.60%)", 
+    "✅ Cluster 2 (Taxa: 3.32%)", 
+    "🔥 Cluster 3 (Taxa: 20.55%)", 
+    "💎 Cluster 1 (Taxa: 3.08%)"
 ])
 
 # ==============================================================================
@@ -33,8 +34,50 @@ with aba0:
             * Tempo de resposta lento no último sinistro.
         """)
     with col2:
-        st.metric(label="Risco de Churn Real", value="21.44%", delta="Acima da Média (12.2%)", delta_color="inverse")
+        st.metric(label="Risco de Churn Real", value="21.60%", delta="Acima da Média (12.2%)", delta_color="inverse")
         st.info("💡 **Ação Recomendada:** Direcionar para uma equipe de retenção dedicada (ouvidoria) para resolver os problemas de suporte pendentes antes da data de renovação.")
+
+# ==============================================================================
+# CLUSTER 2 (Antigo Cluster 3 - Novos Digitais)
+# ==============================================================================
+with aba2:
+    st.info("### Perfil: Clientes Novos, Digitais e em Expansão")
+    col1, col2 = st.columns([1.5, 1])
+    
+    with col1:
+        st.markdown("""
+        **Análise de Comportamento:**
+        Clientes mais jovens e recém-chegados (baixo tempo como cliente). Apresentam um excelente comportamento digital, utilizam muito o portal, têm boa pontuação de relacionamento e dão muitas indicações. Não possuem quase nenhum registo de sinistros ou atritos de suporte. Contudo, recebem poucos descontos e têm apólices mais baratas por enquanto.
+
+        * **Características:**
+            * Idade mais baixa e baixo tempo de casa.
+            * Excelente engajamento digital (`score_engajamento_digital`).
+            * Quase zero sinistros ou reclamações históricas.
+        """)
+    with col2:
+        st.metric(label="Risco de Churn Real", value="3.32%", delta="Zona Segura", delta_color="off")
+        st.info("💡 **Ação Recomendada:** Régua de comunicação automatizada com foco em educação de seguros e ofertas progressivas de desconto à medida que o tempo de contrato avança.")
+
+# ==============================================================================
+# CLUSTER 3 (Antigo Cluster 2 - Tradicionais Inativos)
+# ==============================================================================
+with aba3:
+    st.warning("### Perfil: Tradicionais Inativos Digitais e Alto Prémio")
+    col1, col2 = st.columns([1.5, 1])
+    
+    with col1:
+        st.markdown("""
+        **Análise de Comportamento:**
+        Este grupo possui o maior valor de prémio anual cobrado pela seguradora, tornando-o financeiramente muito valioso, mas o relacionamento é digitalmente inexistente. Apresentam a maior taxa de clientes que **nunca fizeram login no portal** (`nunca_logou`). Além disso, sofrem com o maior tempo médio de resposta da nossa parte em dias, gerando um risco moderado silencioso.
+
+        * **Características:**
+            * Alto prémio anual (`valor_premio_anual`).
+            * Altíssima inatividade no portal/app.
+            * Tempo médio de resposta a sinistros muito elevado.
+        """)
+    with col2:
+        st.metric(label="Risco de Churn Real", value="20.55%", delta="Acima da Média (12.2%)", delta_color="inverse")
+        st.info("💡 **Ação Recomendada:** Forçar o contacto humano direto através de corretores ou gestores de conta para acelerar a resolução de processos pendentes e reduzir o tempo de resposta operacional.")
 
 # ==============================================================================
 # CLUSTER 1
@@ -54,64 +97,22 @@ with aba1:
             * Pagamento 100% em dia.
         """)
     with col2:
-        # delta_color="off" deixa o texto em cinza neutro, ideal para "Zona Segura"
-        st.metric(label="Risco de Churn Real", value="3.10%", delta="Zona Segura", delta_color="off")
+        st.metric(label="Risco de Churn Real", value="3.08%", delta="Zona Segura", delta_color="off")
         st.info("💡 **Ação Recomendada:** Campanhas de *Cross-selling* (oferecer novos produtos premium) e programas de fidelidade/recompensas por indicações (*Member Get Member*).")
 
-# ==============================================================================
-# CLUSTER 2
-# ==============================================================================
-with aba2:
-    st.warning("### Perfil: Tradicionais Inativos Digitais e Alto Prémio")
-    # CORRIGIDO: Removido o '= columns' que estava duplicando a atribuição
-    col1, col2 = st.columns([1.5, 1])
-    
-    with col1:
-        st.markdown("""
-        **Análise de Comportamento:**
-        Este grupo possui o maior valor de prémio anual cobrado pela seguradora, tornando-o financeiramente muito valioso, mas o relacionamento é digitalmente inexistente. Apresentam a maior taxa de clientes que **nunca fizeram login no portal** (`nunca_logou`). Além disso, sofrem com o maior tempo médio de resposta da nossa parte em dias, gerando um risco moderado silencioso.
-
-        * **Características:**
-            * Alto prémio anual (`valor_premio_anual`).
-            * Altíssima inatividade no portal/app.
-            * Tempo médio de resposta a sinistros muito elevado.
-        """)
-    with col2:
-        # delta_color="inverse" é perfeito aqui, pois deixa o valor "Acima da Média" em vermelho (indica risco)
-        st.metric(label="Risco de Churn Real", value="20.55%", delta="Acima da Média (12.2%)", delta_color="inverse")
-        st.info("💡 **Ação Recomendada:** Forçar o contacto humano direto através de corretores ou gestores de conta para acelerar a resolução de processos pendentes e reduzir o tempo de resposta operacional.")
-
-# ==============================================================================
-# CLUSTER 3
-# ==============================================================================
-with aba3:
-    st.info("### Perfil: Clientes Novos, Digitais e em Expansão")
-    col1, col2 = st.columns([1.5, 1])
-    
-    with col1:
-        st.markdown("""
-        **Análise de Comportamento:**
-        Clientes mais jovens e recém-chegados (baixo tempo como cliente). Apresentam um excelente comportamento digital, utilizam muito o portal, têm boa pontuação de relacionamento e dão muitas indicações. Não possuem quase nenhum registo de sinistros ou atritos de suporte. Contudo, recebem poucos descontos e têm apólices mais baratas por enquanto.
-
-        * **Características:**
-            * Idade mais baixa e baixo tempo de casa.
-            * Excelente engajamento digital (`score_engajamento_digital`).
-            * Quase zero sinistros ou reclamações históricas.
-        """)
-    with col2:
-        st.metric(label="Risco de Churn Real", value="3.32%", delta="Zona Segura", delta_color="off")
-        st.info("💡 **Ação Recomendada:** Régua de comunicação automatizada com foco em educação de seguros e ofertas progressivas de desconto à medida que o tempo de contrato avança.")
 # --- GRÁFICO COMPARATIVO COMPLEMENTAR ---
 st.markdown("---")
 st.subheader("📊 Resumo Executivo para a Direção")
 
+# Tabela atualizada com a nova nomenclatura dos clusters 2 e 3
 dados_resumo = pd.DataFrame({
-    'Cluster': ['0: Detratores Críticos', '1: Clientes VIP', '2: Inativos com Atrito', '3: Novos Engajados'],
-    'Volume de Clientes (%)': [24.06, 25.96, 25.00, 24.98],
-    'Prioridade de Atuação': ['Imediata (Urgente)', 'Baixa (Manter)', 'Média (Operacional)', 'Baixa (Nutrir)']
+    'Cluster': ['0: Detratores Críticos', '1: Clientes VIP', '2: Novos Engajados', '3: Inativos com Atrito'],
+    'Volume de Clientes (%)': [24.06, 25.96, 24.98, 25.00],
+    'Prioridade de Atuação': ['Imediata (Urgente)', 'Baixa (Manter)', 'Baixa (Nutrir)', 'Média (Operacional)']
 })
 
 st.table(dados_resumo)
+
 # --- ADICIONANDO O SCATTERPLOT DO TREINAMENTO (PROJEÇÃO PCA) ---
 st.markdown("---")
 st.subheader("🌌 Fronteiras dos Clusters (Visualização Geométrica via PCA)")
@@ -134,7 +135,6 @@ with col_img_texto:
 with col_img_grafico:
     try:
         # Carrega a imagem do repositório utilizando o caminho relativo dentro da pasta pages
-        # (Se o arquivo estiver solto na raiz, use apenas 'scatplot.png')
         st.image("pages/scatplot.png", caption="Dispersão dos 4 Grupos de Clientes com Redução de Dimensionalidade (PCA)", use_container_width=True)
     except Exception as e:
         st.warning("Insira o arquivo 'scatplot.png' dentro da pasta 'pages' no seu GitHub para visualizar o gráfico aqui.")
