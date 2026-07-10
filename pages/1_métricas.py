@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+import joblib
 
 # Configuração da página de métricas
 st.set_page_config(page_title="PRT Seguradora - Métricas dos Modelos", layout="wide")
