@@ -7,7 +7,7 @@ import altair as alt
 st.set_page_config(page_title="PRT Seguradora - Perfis de Clientes", layout="wide")
 
 st.title("👥 Análise Comportamental dos Clusters (KMeans_k4)")
-st.markdown("Interpretação estratégica dos 4 ecossistemas de clientes gerados pela nossa inteligência artificial baseada em dados de Cadastro, Contratos, Sinistros e Marketing.")
+st.markdown("Interpretação estratégica dos 4 ecossistemas de clientes gerados pelo nosso modelo baseado em dados de Cadastro, Contratos, Sinistros e Marketing.")
 
 # Títulos das abas atualizados com as taxas corretas após a inversão
 aba0, aba1, aba2, aba3 = st.tabs([
@@ -136,5 +136,4 @@ with col_img_grafico:
     try:
         # Carrega a imagem do repositório utilizando o caminho relativo dentro da pasta pages
         st.image("pages/scatplot.png", caption="Dispersão dos 4 Grupos de Clientes com Redução de Dimensionalidade (PCA)", use_container_width=True)
-    except Exception as e:
-        st.warning("Insira o arquivo 'scatplot.png' dentro da pasta 'pages' no seu GitHub para visualizar o gráfico aqui.")
+
