@@ -641,38 +641,6 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                         modelo_pca = cluster_dict["pca"]
 
                         df_features = df_final.copy()
-
-                        st.write("NaNs antes do pipeline:")
-                        st.write(df_features.isna().sum()[df_features.isna().sum() > 0])
-
-                        dados_processados = pipeline_proc.transform(df_features)
-
-                        dados_processados = pipeline_proc.transform(df_features)
-
-                        if isinstance(dados_processados, pd.DataFrame):
-                            nans = dados_processados.isna().sum()
-                            colunas_com_nan = nans[nans > 0]
-
-                            st.write("NaNs após o pipeline:")
-                            st.write(colunas_com_nan)
-
-                            if len(colunas_com_nan) > 0:
-                                st.write("Valores únicos das colunas problemáticas (antes do pipeline):")
-                                for col in colunas_com_nan.index:
-                                    # remove o prefixo do ColumnTransformer
-                                    col_original = col.split("__")[-1]
-
-                                    if col_original in df_features.columns:   # dados = dataframe original
-                                        st.write(f"### {col_original}")
-                                        st.write(sorted(df_features[col_original].dropna().unique()))
-                        else:
-                            st.write("NaNs:", np.isnan(dados_processados).sum())
-
-                        clusters_preditos = modelo_kmeans.predict(dados_processados)
-
-                        st.write(type(pipeline_proc))
-                        st.write(pipeline_proc)
-   
                         componentes_calculadas = np.asarray(modelo_pca.transform(dados_processados))
 
                         df_visualizacao_pca = pd.DataFrame(
