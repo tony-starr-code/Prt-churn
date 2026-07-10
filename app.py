@@ -659,6 +659,14 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                         df_visualizacao_pca["id_cliente"] = df_final["id_cliente"].values
 
                         st.markdown("#### Mapa de Dispersão de Clientes")
+
+                        mapa_cores_cluster = {
+                            "Grupo 0": "#1B2A4A",  # azul-marinho escuro
+                            "Grupo 1": "#4C7C59",  # verde musgo
+                            "Grupo 2": "#A9AFAF",  # cinza-prata
+                            "Grupo 3": "#3E9FB0",  # azul-petróleo / teal
+                        }
+
                         fig_pca = px.scatter(
                             df_visualizacao_pca,
                             x="PC1",
@@ -666,7 +674,8 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                             color="Cluster",
                             hover_data=["id_cliente"],
                             title=None,
-                            color_discrete_sequence=px.colors.qualitative.Bold,
+                            color_discrete_map=mapa_cores_cluster,  
+                            category_orders={"Cluster": ["Grupo 0", "Grupo 1", "Grupo 2", "Grupo 3"]},  
                             template="plotly_white",
                         )
                         fig_pca.update_layout(
