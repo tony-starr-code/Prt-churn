@@ -9,12 +9,11 @@ st.set_page_config(page_title="PRT Seguradora - Perfis de Clientes", layout="wid
 st.title("👥 Análise Comportamental dos Clusters (KMeans_k4)")
 st.markdown("Interpretação estratégica dos 4 ecossistemas de clientes gerados pela nossa inteligência artificial baseada em dados de Contratos, Sinistros e Marketing.")
 
-# --- COMPONENTE VISUAL: ABAS PARA NAVEGAÇÃO ---
-aba0, aba1, aba2, aba3 = st.tabs([
-    "🚨 Cluster 0: Detratores Críticos", 
-    "✅ Cluster 1: Clientes Modelo / VIP", 
-    "⚠️ Cluster 2: Inativos Digitais com Atrito", 
-    "🔄 Cluster 3: Recém-Chegados Engajados"
+aba0, aba2, aba3, aba1 = st.tabs([
+    "🚨 Cluster 0 (Taxa: 21.44%)", 
+    "🔥 Cluster 2 (Taxa: 20.55%)", 
+    "✅ Cluster 3 (Taxa: 3.32%)", 
+    "💎 Cluster 1 (Taxa: 3.10%)"
 ])
 
 # ==============================================================================
@@ -34,8 +33,8 @@ with aba0:
             * Tempo de resposta lento no último sinistro.
         """)
     with col2:
-        st.metric(label="Risco Estimado de Churn", value="Alta Vulnerabilidade", delta="Ação Urgente", delta_color="inverse")
-        st.info("💡 **Ação Recomendada:** Direcionar para uma equipa de retenção dedicada (ouvidoria) para resolver os problemas de suporte pendentes antes da data de renovação.")
+        st.metric(label="Risco de Churn Real", value="21.44%", delta="Acima da Média (12.2%)", delta_color="inverse")
+        st.info("💡 **Ação Recomendada:** Direcionar para uma equipe de retenção dedicada (ouvidoria) para resolver os problemas de suporte pendentes antes da data de renovação.")
 
 # ==============================================================================
 # CLUSTER 1
@@ -55,7 +54,8 @@ with aba1:
             * Pagamento 100% em dia.
         """)
     with col2:
-        st.metric(label="Risco Estimado de Churn", value="Praticamente Nulo (Estável)", delta="Zona Segura")
+        # delta_color="off" deixa o texto em cinza neutro, ideal para "Zona Segura"
+        st.metric(label="Risco de Churn Real", value="3.10%", delta="Zona Segura", delta_color="off")
         st.info("💡 **Ação Recomendada:** Campanhas de *Cross-selling* (oferecer novos produtos premium) e programas de fidelidade/recompensas por indicações (*Member Get Member*).")
 
 # ==============================================================================
@@ -63,7 +63,8 @@ with aba1:
 # ==============================================================================
 with aba2:
     st.warning("### Perfil: Tradicionais Inativos Digitais e Alto Prémio")
-    col1, col2 = columns = st.columns([1.5, 1])
+    # CORRIGIDO: Removido o '= columns' que estava duplicando a atribuição
+    col1, col2 = st.columns([1.5, 1])
     
     with col1:
         st.markdown("""
@@ -76,7 +77,8 @@ with aba2:
             * Tempo médio de resposta a sinistros muito elevado.
         """)
     with col2:
-        st.metric(label="Risco Estimado de Churn", value="Moderado / Silencioso", delta="Atenção Operacional", delta_color="off")
+        # delta_color="inverse" é perfeito aqui, pois deixa o valor "Acima da Média" em vermelho (indica risco)
+        st.metric(label="Risco de Churn Real", value="20.55%", delta="Acima da Média (12.2%)", delta_color="inverse")
         st.info("💡 **Ação Recomendada:** Forçar o contacto humano direto através de corretores ou gestores de conta para acelerar a resolução de processos pendentes e reduzir o tempo de resposta operacional.")
 
 # ==============================================================================
@@ -97,9 +99,8 @@ with aba3:
             * Quase zero sinistros ou reclamações históricas.
         """)
     with col2:
-        st.metric(label="Risco Estimado de Churn", value="Baixo / Monitorizado", delta="Potencial de Crescimento")
+        st.metric(label="Risco de Churn Real", value="3.32%", delta="Zona Segura", delta_color="off")
         st.info("💡 **Ação Recomendada:** Régua de comunicação automatizada com foco em educação de seguros e ofertas progressivas de desconto à medida que o tempo de contrato avança.")
-
 # --- GRÁFICO COMPARATIVO COMPLEMENTAR ---
 st.markdown("---")
 st.subheader("📊 Resumo Executivo para a Direção")

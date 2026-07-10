@@ -55,56 +55,45 @@ st.markdown("---")
 st.header("🤖 2. Clusterização de Perfis (KMeans_k4)")
 st.markdown("Estratégia usada para agrupar clientes semelhantes e analisar como o comportamento de cancelamento varia entre os grupos.")
 
-# Cards com as métricas principais do print do MLflow
+# Cards com as métricas reais
 col_c1, col_c2, col_c3, col_c4 = st.columns(4)
 with col_c1:
-    st.metric(label="Silhouette Score", value="0.0378", help="Medida de proximidade interna dos clusters. Próximo a 0 indica alta sobreposição natural das variáveis de seguros.")
+    st.metric(label="Silhouette Score", value="0.0378")
 with col_c2:
-    st.metric(label="Davies-Bouldin Index", value="4.2491", help="Similaridade entre os clusters. Menores valores indicam melhor separação.")
+    st.metric(label="Taxa Média Geral de Churn", value="~12.2%")
 with col_c3:
-    st.metric(label="Amplitude de Churn", value="18.34%", help="Diferença entre o cluster com maior taxa de churn e o menor. Indica alta capacidade de segmentação de risco!")
+    st.metric(label="Amplitude de Churn", value="18.34%", help="Diferença entre o maior risco (Cluster 0: 21.44%) e o menor risco (Cluster 1: 3.10%).")
 with col_c4:
-    st.metric(label="Nº de Clusters Efetivos", value="4")
+    st.metric(label="Total de Clientes Mapeados", value="79.999")
 
-# Linha com detalhamento volumétrico e taxa de churn por grupo
 col_g1, col_g2 = st.columns([1, 1.2])
 
 with col_g1:
-    st.markdown("### 📊 Distribuição e Coesão Volumétrica")
-    # Tabela com as informações de tamanho dos grupos extraídas do seu log
+    st.markdown("### 📊 Volumetria Real por Grupo")
     df_metrics_km = pd.DataFrame({
-        "Métrica do Experimento": [
-            "Menor Tamanho de Grupo (menor_cluster_pct)",
-            "Maior Tamanho de Grupo (maior_cluster_pct)",
-            "Métrica de Inércia Global (inertia)",
-            "Calinski-Harabasz Index"
-        ],
-        "Valor Registrado": [
-            "24.06%",
-            "25.96%",
-            "5,693,439.31",
-            "2,934.51"
-        ]
+        "Cluster": ["Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3"],
+        "Clientes (n)": ["19.249", "19.534", "20.775", "20.442"],
+        "Representatividade": ["24.06%", "24.42%", "25.97%", "25.55%"]
     })
     st.dataframe(df_metrics_km, use_container_width=True, hide_index=True)
-    st.caption("💡 **Análise de Volume:** Os clusters estão muito bem distribuídos simetricamente (~25% do volume total cada um), evitando grupos isolados ou insignificantes.")
 
 with col_g2:
-    st.markdown("### 🎯 Taxa de Churn Comportamental por Grupo")
+    st.markdown("### 🎯 Taxa de Churn por Cluster (Dados de Treino)")
     
-    # Criando o cenário visualizado nas métricas de churn do MLflow (churn_taxa_min: 3.1% e churn_taxa_max: 21.4%)
+    # Dados extraídos fielmente do seu novo gráfico
     dados_churn_cluster = pd.DataFrame({
-        'Cluster': ['Cluster 0 (Risco Controlado)', 'Cluster 1 (Estratégico)', 'Cluster 2 (Risco Moderado)', 'Cluster 3 (Zona Crítica)'],
-        'Taxa de Churn (%)': [3.10, 8.50, 14.20, 21.44]
+        'Cluster': ['Cluster 0', 'Cluster 2', 'Cluster 3', 'Cluster 1'],
+        'Taxa de Churn (%)': [21.44, 20.55, 3.32, 3.10],
+        'Status': ['Acima da Média', 'Acima da Média', 'Abaixo da Média', 'Abaixo da Média']
     })
     
     grafico_clusters = alt.Chart(dados_churn_cluster).mark_bar().encode(
         x='Taxa de Churn (%):Q',
         y=alt.Y('Cluster:N', sort='-x'),
         color=alt.condition(
-            alt.datum['Taxa de Churn (%)'] > 20,
-            alt.value('#d9534f'),  # Vermelho para o pior cenário
-            alt.value('#2b5c8f')   # Azul clássico para o restante
+            alt.datum['Taxa de Churn (%)'] > 12.2,
+            alt.value('#d9534f'),  # Vermelho para os que estão acima da linha tracejada
+            alt.value('#2b5c8f')   # Azul para os grupos controlados
         ),
         tooltip=['Cluster', 'Taxa de Churn (%)']
     ).properties(height=180)
