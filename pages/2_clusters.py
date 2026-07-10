@@ -111,3 +111,29 @@ dados_resumo = pd.DataFrame({
 })
 
 st.table(dados_resumo)
+# --- ADICIONANDO O SCATTERPLOT DO TREINAMENTO (PROJEÇÃO PCA) ---
+st.markdown("---")
+st.subheader("🌌 Fronteiras dos Clusters (Visualização Geométrica via PCA)")
+st.markdown("""
+Para conseguir visualizar uma base com dezenas de colunas em um gráfico de duas dimensões (X e Y), aplicamos o **PCA (Principal Componente Analysis)**. 
+Cada ponto no gráfico abaixo representa um cliente da seguradora:
+""")
+
+# Criando colunas para centralizar e ajustar o tamanho do gráfico na tela
+col_img_texto, col_img_grafico = st.columns([1, 2])
+
+with col_img_texto:
+    st.markdown("""
+    **O que observar nesta projeção?**
+    * **Separação nítida:** Note como o algoritmo conseguiu criar divisões bem claras entre a metade inferior (Clusters 0 e 1) e a metade superior (Clusters 2 e 3).
+    * **Áreas de transição:** As regiões onde as cores se misturam levemente indicam perfis híbridos (clientes mudando de comportamento).
+    * **Densidade:** Aglomerados mais compactos indicam comportamentos extremamente padronizados dentro daquele perfil.
+    """)
+
+with col_img_grafico:
+    try:
+        # Carrega a imagem do repositório utilizando o caminho relativo dentro da pasta pages
+        # (Se o arquivo estiver solto na raiz, use apenas 'scatplot.png')
+        st.image("pages/scatplot.png", caption="Dispersão dos 4 Grupos de Clientes com Redução de Dimensionalidade (PCA)", use_container_width=True)
+    except Exception as e:
+        st.warning("Insira o arquivo 'scatplot.png' dentro da pasta 'pages' no seu GitHub para visualizar o gráfico aqui.")
