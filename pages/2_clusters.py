@@ -111,7 +111,7 @@ st.subheader("📊 Resumo Executivo para a Direção")
 # Tabela atualizada com a nova nomenclatura dos clusters 2 e 3
 dados_resumo = pd.DataFrame({
     'Cluster': ['0: Detratores Críticos', '1: Clientes VIP', '2: Novos Engajados', '3: Inativos com Atrito'],
-    'Volume de Clientes (%)': [24.06, 25.96, 24.98, 25.00],
+    'Volume de Clientes (%)': [24.63, 25.51, 26.07, 23.79],
     'Prioridade de Atuação': ['Imediata (Urgente)', 'Baixa (Manter)', 'Baixa (Nutrir)', 'Média (Operacional)']
 })
 
