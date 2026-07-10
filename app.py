@@ -641,6 +641,7 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                         modelo_pca = cluster_dict["pca"]
 
                         df_features = df_final.copy()
+                        
                         componentes_calculadas = np.asarray(modelo_pca.transform(dados_processados))
 
                         df_visualizacao_pca = pd.DataFrame(
