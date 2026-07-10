@@ -17,7 +17,7 @@ artefatos = carregar_modelo()
 metricas = artefatos.get("metrics", {})
 
 st.title("📈 Performance e Métricas dos Modelos")
-st.markdown("Detalhamento técnico dos modelos homologados em produção via MLflow: Predição de Churn e Clusterização de Perfis.")
+st.markdown("Detalhamento técnico dos modelos: Predição de Churn e Clusterização de Perfis.")
 
 # ==============================================================================
 # SEÇÃO 1: MODELO DE PREDIÇÃO (LIGHTGBM) - MATRIZ DE CONFUSÃO 
