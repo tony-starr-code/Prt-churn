@@ -20,7 +20,7 @@ st.title("📈 Performance e Métricas dos Modelos")
 st.markdown("Detalhamento técnico dos modelos homologados em produção via MLflow: Predição de Churn e Clusterização de Perfis.")
 
 # ==============================================================================
-# SEÇÃO 1: MODELO DE PREDIÇÃO (LIGHTGBM)
+# SEÇÃO 1: MODELO DE PREDIÇÃO (LIGHTGBM) - MATRIZ DE CONFUSÃO AUMENTADA
 # ==============================================================================
 st.header("🌲 1. Classificador Geral (v3_LightGBM_Model)")
 
@@ -35,34 +35,61 @@ with col3:
 with col4:
     st.metric(label="F1-Score", value=f"{metricas.get('f1_score', 0):.2%}", delta="+1.8%")
 
-col_text, col_chart = st.columns([1, 1.5])
+col_text, col_chart = st.columns([1, 1.5]) # Mantenho a estrutura de colunas
 
-cm = metricas.get('confusion_matrix', np.nan)
+cm = metricas.get('confusion_matrix', [[0, 0], [0, 0]]) # Garante que cm exista
+tn, fp, fn, tp = cm[0][0], cm[0][1], cm[1][0], cm[1][1] # Extração correta
 
 with col_text:
     st.markdown(f"""
     **Matriz de Confusão:**
-    * **Verdadeiros Negativos ({cm[0][0]}):** Clientes que o modelo disse que ficariam e eles realmente continuaram na seguradora.
-    * **Verdadeiros Positivos ({cm[0][1]}):** Clientes em risco que o modelo identificou perfeitamente (onde a equipe deve agir).
-    * **Falsos Positivos ({cm[1][0]}):** Alertas falsos. O modelo achou que iam cancelar, mas continuam ativos.
-    * **Falsos Negativos ({cm[1][1]}):** Os casos perigosos. Clientes que deram churn sem o modelo prever.
-""")
+    * **Verdadeiros Negativos ({tn}):** Clientes que o modelo previu que ficariam e eles realmente continuaram na seguradora.
+    * **Verdadeiros Positivos ({tp}):** Clientes em risco que o modelo identificou perfeitamente (onde a equipe deve agir).
+    * **Falsos Positivos ({fp}):** Alertas falsos. O modelo achou que iam cancelar, mas continuam ativos.
+    * **Falsos Negativos ({fn}):** Os casos perigosos. Clientes que deram churn sem o modelo prever.
+    """)
+
+# --- AQUI ESTÁ O AJUSTE DA MATRIZ ---
 with col_chart:
     dados_matriz = pd.DataFrame({
         'Real': ['Ficou', 'Ficou', 'Cancelou', 'Cancelou'],
         'Previsto': ['Ficou', 'Cancelou', 'Ficou', 'Cancelou'],
-        "Quantidade":[cm[0][0],cm[0][1],cm[1][0],cm[1][1]]
+        "Quantidade": [tn, fp, fn, tp]
     })
-    chart = alt.Chart(dados_matriz).mark_rect().encode(
-        x='Previsto:O', y='Real:O',
-        color=alt.Color('Quantidade:Q', scale=alt.Scale(scheme='blues')),
+    
+    # Criando o gráfico base
+    base = alt.Chart(dados_matriz).encode(
+        x=alt.X('Previsto:O', sort=['Ficou', 'Cancelou'], title="Classe Prevista"), # Adiciona título ao eixo X
+        y=alt.Y('Real:O', sort=['Ficou', 'Cancelou'], title="Classe Real"), # Adiciona título ao eixo Y
+    )
+    
+    # Configurando o quadrado da matriz com tamanho maior
+    chart = base.mark_rect().encode(
+        color=alt.Color('Quantidade:Q', scale=alt.Scale(scheme='blues'), legend=alt.Legend(title="Quantidade", labelFontSize=12, titleFontSize=14)), # Ajusta legenda
         tooltip=['Real', 'Previsto', 'Quantidade']
-    ).properties(width=300, height=180)
-    text = chart.mark_text(baseline='middle').encode(text='Quantidade:Q', color=alt.value('black'))
-    st.altair_chart(chart + text, use_container_width=True)
+    ).properties(
+        width=500,  # LARGURA AUMENTADA (era 300)
+        height=350, # ALTURA AUMENTADA (era 180)
+        title=alt.TitleParams(text="Matriz de Confusão (Tamanho Aumentado)", anchor='start', fontSize=18) # Título interno opcional
+    )
+    
+    # Adicionando o texto dentro da matriz, também maior e com contraste
+    text = base.mark_text(baseline='middle').encode(
+        text='Quantidade:Q', 
+        color=alt.condition(alt.datum.Quantidade > (max(tn, tp)/2), alt.value('white'), alt.value('black')),
+        size=alt.value(16) # FONTE DO NÚMERO AUMENTADA
+    )
+    
+    # Configurando o tamanho dos rótulos dos eixos
+    final_chart = (chart + text).configure_axis(
+        labelFontSize=14,
+        titleFontSize=16
+    )
+    
+    st.altair_chart(final_chart, use_container_width=False) # use_container_width=False para respeitar o tamanho definido
 
 st.markdown("---")
-
+# ==============================================================================
 # ==============================================================================
 # SEÇÃO 2: MODELO DE CLUSTERIZAÇÃO (KMEANS_K4)
 # ==============================================================================
