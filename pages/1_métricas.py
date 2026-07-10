@@ -33,7 +33,7 @@ with col2:
 with col3:
     st.metric(label="Recall (Sensibilidade)", value=f"{metricas.get('recall', 0):.2%}", delta="+3.1%")
 with col4:
-    st.metric(label="F1-Score", value=f"{metrics.get('f1_score', 0):.2%}", delta="+1.8%")
+    st.metric(label="F1-Score", value=f"{metricas.get('f1_score', 0):.2%}", delta="+1.8%")
 
 col_text, col_chart = st.columns([1, 1.5])
 
