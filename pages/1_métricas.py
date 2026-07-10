@@ -131,7 +131,7 @@ with col_g2:
     
     # Dados extraídos fielmente da imagem fornecida
     dados_churn_cluster = pd.DataFrame({
-        'Cluster': ['Cluster 0', 'Cluster 3', 'Cluster 1', 'Cluster 2'],
+        'Cluster': ['Cluster 0', 'Cluster 3', 'Cluster 2', 'Cluster 1'],
         'Taxa de Churn (%)': [21.69, 20.92, 3.25, 3.05],
         'Status': ['Acima da Média', 'Acima da Média', 'Abaixo da Média', 'Abaixo da Média']
     })
