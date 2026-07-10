@@ -584,19 +584,6 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                 st.stop()
 
             t0 = time.time()
-            
-            # ===================== remover =================================
-            if isinstance(X_scoring, pd.DataFrame):
-                total_nans = X_scoring.isna().sum().sum()
-                cols_com_nan = X_scoring.isna().sum()[X_scoring.isna().sum() > 0]
-            else:
-                total_nans = np.isnan(X_scoring).sum()
-                cols_com_nan = "Formato Numpy Array (verificação por coluna não exibida)"
-
-            st.write("Quantidade de NaNs após o pipeline CatBoost:", total_nans)
-            if total_nans > 0 and isinstance(X_scoring, pd.DataFrame):
-                st.write(cols_com_nan)
-            # ===============================================================
 
             # 2. Predição com o modelo CatBoost
             probabilidades = modelo.predict_proba(X_scoring)[:, 1]
