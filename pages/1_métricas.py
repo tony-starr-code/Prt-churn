@@ -96,10 +96,10 @@ with col_g2:
     
     # Dados extraídos fielmente do seu novo gráfico
     dados_churn_cluster = pd.DataFrame({
-        'Cluster': ['Cluster 0', 'Cluster 2', 'Cluster 3', 'Cluster 1'],
-        'Taxa de Churn (%)': [21.60, 20.66, 3.44, 3.08],
-        'Status': ['Acima da Média', 'Acima da Média', 'Abaixo da Média', 'Abaixo da Média']
-    })
+    'Cluster': ['Cluster 0', 'Cluster 3', 'Cluster 2', 'Cluster 1'],
+    'Taxa de Churn (%)': [21.60, 20.66, 3.44, 3.08],
+    'Status': ['Acima da Média', 'Acima da Média', 'Abaixo da Média', 'Abaixo da Média']
+})
     
     grafico_clusters = alt.Chart(dados_churn_cluster).mark_bar().encode(
         x='Taxa de Churn (%):Q',
