@@ -686,29 +686,25 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                             yaxis_title="Componente Principal 2 (PC2)",
                         )
                         st.plotly_chart(fig_pca, use_container_width=True)
-
                         # ============================================================
-                        # 🛠️ MÓDULO DE DEPURAÇÃO DE OUTLIERS DO PCA
+                        # 📥 EXPORTAÇÃO DOS RESULTADOS DA CLUSTERIZAÇÃO
                         # ============================================================
                         st.markdown("---")
-                        st.markdown("### 🔍 Investigador de Anomalias do PCA")
-                        st.info("Ferramenta de engenharia reversa para identificar qual variável (feature) está distorcendo a projeção de clientes no mapa espacial.")
-                        
-                        # 1. Identificar os clientes mais distantes da origem (0,0)
-                        df_visualizacao_pca['Distancia_Origem'] = np.sqrt(df_visualizacao_pca['PC1']**2 + df_visualizacao_pca['PC2']**2)
-                        df_outliers = df_visualizacao_pca.sort_values(by='Distancia_Origem', ascending=False)
-                        
-                        st.markdown("**Top 5 Clientes mais extremos na projeção atual:**")
-                        st.dataframe(df_outliers.head(5)[['id_cliente', 'Cluster', 'PC1', 'PC2', 'Distancia_Origem']], use_container_width=True)
+                        st.markdown("### 📥 Exportar Segmentação")
+                        st.info("Baixe a lista completa contendo o ID dos clientes e seus respectivos segmentos (clusters).")
 
+                        # Separa apenas as duas colunas solicitadas
+                        df_download_cluster = df_visualizacao_pca[["id_cliente", "Cluster"]].copy()
 
-                        st.markdown("#### Distribuição de Clientes por Segmento")
-                        dist_cluster = df_visualizacao_pca["Cluster"].value_counts().reset_index()
-                        dist_cluster.columns = ["Segmento Identificado", "Volume de Clientes"]
-                        st.dataframe(
-                            dist_cluster.sort_values(by="Segmento Identificado"),
-                            use_container_width=True,
-                            hide_index=True,
+                        # Converte para CSV
+                        csv_cluster = df_download_cluster.to_csv(index=False).encode("utf-8")
+
+                        # Renderiza o botão de download no Streamlit
+                        st.download_button(
+                            label="📥 Baixar Mapeamento de Clusters (.CSV)",
+                            data=csv_cluster,
+                            file_name="clientes_clusters_prt.csv",
+                            mime="text/csv",
                         )
 
                     except Exception as e:
