@@ -12,6 +12,7 @@ import joblib
 from dateutil import parser
 
 import new_pipeline
+from churn_pipe import EngenhariaDeFeatures, RemovedorDeColunas, ImputadorDistribuicao, CriadorFaixaEtaria, RemovedorDeColunas
 
 # CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(
@@ -62,6 +63,7 @@ st.markdown("---")
 def carregar_artefatos():
     artefatos = {
         "modelo_churn": None,
+        "pipeline_churn": None,
         "colunas_churn": None,
         "cluster_dict": None,
         "pipeline_cluster": None,
@@ -69,11 +71,13 @@ def carregar_artefatos():
     }
 
     try:
-        with open("model.pkl", "rb") as f:
-            artefatos["modelo_churn"] = cloudpickle.load(f)
-        artefatos["colunas_churn"] = joblib.load("colunas_modelo.pkl")
+        dicionario_modelo = joblib.load("model.pkl")
+        artefatos["modelo_churn"] = dicionario_modelo["model"]
+        artefatos["pipeline_churn"] = dicionario_modelo["pipeline"]
+        artefatos["colunas_churn"] = dicionario_modelo["columns"]
+
     except Exception as e:
-        artefatos["avisos"].append(f"Erro ao carregar modelo de Churn: {e}")
+        artefatos["avisos"].append(f"Erro ao carregar dicionário/modelo de Churn: {e}")
 
     if os.path.exists("pipeline_clusterizacao_k4.pkl"):
         try:
@@ -85,11 +89,6 @@ def carregar_artefatos():
 
     try:
         artefatos["pipeline_cluster"] = new_pipeline.load_fitted_pipeline()
-        if artefatos["cluster_dict"]:
-            for chave in ("pipeline", "preprocessor"):
-                if chave in artefatos["cluster_dict"]:
-                    artefatos["pipeline_cluster"] = artefatos["cluster_dict"][chave]
-                    break
     except Exception as e:
         artefatos["avisos"].append(f"Erro ao carregar pipeline de new_pipeline: {e}")
 
@@ -106,7 +105,7 @@ else:
     st.sidebar.success("✅ Modelos carregados com sucesso!")
 
 # --- FUNÇÕES GLOBAIS DE TRATAMENTO (inalteradas) ---
-NULOS_DISFARÇADOS = ["#n/d", "-", "", "?", "n/a", "na", "null", "none", "-"]
+NULOS_DISFARÇADOS = ["#n/d", "-", "", "?", "n/a", "na", "null", "none", "-", "Nan"]
 
 def limpar_nulos(df):
     for col in df.select_dtypes(include=["object", "string"]).columns:
@@ -230,6 +229,39 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
     else:
         
         try:
+            LIMITES_OUTLIERS = {
+                # Cadastro
+                "qtd_dependentes": (0, 15),
+                "renda_anual": (0, 2_000_000),
+                "valor_imovel": (0, 15_000_000),
+                "tempo_residencia_anos": (0, 80),
+                
+                # Sinistros
+                "num_reclamacoes_12m": (0, 50),
+                "num_sinistros_historico": (0, 30),
+                "dias_ultimo_contato": (0, 1825), # até ~5 anos
+                "tempo_medio_resposta_dias": (0, 180),
+                "num_ligacoes_suporte_12m": (0, 365),
+                "num_acessos_app_mes": (0, 500),
+                "tempo_resolucao_ultimo_sinistro": (0, 730),
+                
+                # Marketing
+                "score_engajamento_digital": (0, 100),
+                "indicou_clientes": (0, 100),
+                "renovacoes_consecutivas": (0, 50),
+                "indice_relacionamento": (0, 100),
+                "ano_veiculo": (1950, 2027), # Ajustável via hoje.year + 1
+                "km_anual_estimado": (100.0, 300_000),
+                "ultimo_login_portal_dias": (0, 1825),
+                "score_propensao_churn": (0.0, 1.0),
+                
+                # Contratos (os já fixados em np.nan foram mantidos na lógica de negócio mais abaixo)
+                "franquia_media": (300.0, 200_000),
+                "num_apolices_ativas": (0, 50),
+                "num_produtos_contratados": (0, 50),
+                "desconto_aplicado_pct": (0, 100),
+                "valor_premio_anual": (300.0, 25_000.0)
+            }
 
             # ============================================================
             # 1. TRATAMENTO — CADASTRO DOS CLIENTES
@@ -258,6 +290,8 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             df_cad["tem_filhos"] = pd.to_numeric(df_cad["tem_filhos"], errors="coerce").astype("Int64")  # MUDANÇA: Int64 nullable (antes virava int só depois do fillna via imputar_categorica)
 
             df_cad["qtd_dependentes"] = pd.to_numeric(df_cad["qtd_dependentes"], errors="coerce").astype("Int64")
+            df_cad["qtd_dependentes"] = df_cad["qtd_dependentes"].clip(lower=LIMITES_OUTLIERS["qtd_dependentes"][0], upper=LIMITES_OUTLIERS["qtd_dependentes"][1]).astype("Int64")
+            
             df_cad["escolaridade"] = df_cad["escolaridade"].astype(str).str.strip().str.lower().str.capitalize()
             df_cad["escolaridade"] = df_cad["escolaridade"].replace("Nan", np.nan)
 
@@ -265,16 +299,13 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                 if col in df_cad.columns:
                     df_cad[col] = df_cad[col].astype(str).str.strip().str.replace(r"r\$", "", regex=True).str.replace(r"\s", "", regex=True).str.replace(r"\.(?=\d{3})", "", regex=True).str.replace(",", ".", regex=False)
                     df_cad[col] = pd.to_numeric(df_cad[col], errors="coerce")
-                    # MUDANÇA: removido o clip por IQR calculado no lote (Q1/Q3 do teste != Q1/Q3 do treino).
-                    # Se quiser manter algum corte de sanidade aqui, use limites FIXOS (constantes de negócio,
-                    # como já é feito em df_con/df_mkt com LIM_REALISTAS/LIMITES_NEGOCIO), nunca quantile() do df carregado.
+                    df_cad[col] = df_cad[col].clip(lower=LIMITES_OUTLIERS[col][0], upper=LIMITES_OUTLIERS[col][1])
 
             df_cad["possui_imovel"] = df_cad["possui_imovel"].astype(str).str.strip().str.lower().replace(NULOS_DISFARÇADOS + ["nan"], np.nan)
             df_cad["possui_imovel"] = pd.to_numeric(df_cad["possui_imovel"], errors="coerce").astype("Int64")
 
             df_cad["tempo_residencia_anos"] = pd.to_numeric(df_cad["tempo_residencia_anos"], errors="coerce")
-            # MUDANÇA: removido fillna(mediana do lote) + astype(int). Mantido como float com NaN.
-
+            df_cad["tempo_residencia_anos"] = df_cad["tempo_residencia_anos"].clip(lower=LIMITES_OUTLIERS["tempo_residencia_anos"][0], upper=LIMITES_OUTLIERS["tempo_residencia_anos"][1])
             # MUDANÇA: bloco inteiro removido —
             #   for col in ["genero", "estado_civil", "tem_filhos", "escolaridade"]:
             #       df_cad[col] = imputar_categorica(df_cad[col])
@@ -316,10 +347,13 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             cols_num_sin = ["num_reclamacoes_12m", "num_sinistros_historico", "dias_ultimo_contato", "tempo_medio_resposta_dias", "num_ligacoes_suporte_12m", "num_acessos_app_mes", "satisfacao_nps"]
             for col in cols_num_sin:
                 df_sin[col] = pd.to_numeric(df_sin[col], errors="coerce")
+                if col in LIMITES_OUTLIERS:
+                    df_sin[col] = df_sin[col].clip(lower=LIMITES_OUTLIERS[col][0], upper=LIMITES_OUTLIERS[col][1])
                 # MUDANÇA: removido imputar_amostra(df_sin[col]) — idem ao comentário acima, essas colunas
                 # também estão em COLUNAS_NUMERICAS_SENTINELA_NEG1.
 
             df_sin["tempo_resolucao_ultimo_sinistro"] = pd.to_numeric(df_sin["tempo_resolucao_ultimo_sinistro"], errors="coerce")
+            df_sin["tempo_resolucao_ultimo_sinistro"] = df_sin["tempo_resolucao_ultimo_sinistro"].clip(lower=LIMITES_OUTLIERS["tempo_resolucao_ultimo_sinistro"][0], upper=LIMITES_OUTLIERS["tempo_resolucao_ultimo_sinistro"][1])
             df_sin.loc[df_sin["tempo_resolucao_ultimo_sinistro"].isnull() & df_sin["data_ultimo_sinistro"].isnull(), "tempo_resolucao_ultimo_sinistro"] = 0
             # MUDANÇA: removido imputar_amostra(...) restante — o que sobrar de NaN aqui (sinistro existiu
             # mas o tempo de resolução não foi preenchido) é um NaN genuíno e deve ir pro pipeline treinado.
@@ -365,6 +399,8 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             numeric_cols_mkt = ["score_engajamento_digital", "indicou_clientes", "renovacoes_consecutivas", "indice_relacionamento", "ano_veiculo", "km_anual_estimado", "ultimo_login_portal_dias", "score_propensao_churn", "cluster_sugerido_crm"]
             for col in numeric_cols_mkt:
                 df_mkt[col] = pd.to_numeric(df_mkt[col], errors="coerce")
+                if col in LIMITES_OUTLIERS:
+                    df_mkt[col] = df_mkt[col].clip(lower=LIMITES_OUTLIERS[col][0], upper=LIMITES_OUTLIERS[col][1])
 
             for col in ["tipo_veiculo", "segmento_marketing", "regiao_vendas"]:
                 df_mkt[col] = df_mkt[col].apply(normalizar_texto_mkt)
@@ -423,6 +459,9 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             colunas_monetarias = ["valor_premio_anual", "valor_cobertura_total", "franquia_media"]
             for col in colunas_monetarias:
                 df_con[col] = df_con[col].apply(limpar_valor_monetario_con)
+                # TRATAMENTO OUTLIER: Aplicar o dicionário se existir (para franquia_media)
+                if col in LIMITES_OUTLIERS:
+                    df_con[col] = df_con[col].clip(lower=LIMITES_OUTLIERS[col][0], upper=LIMITES_OUTLIERS[col][1])
 
             df_con["data_primeira_apolice"] = pd.to_datetime(df_con["data_primeira_apolice"], format="mixed", errors="coerce")
 
@@ -484,6 +523,8 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                 if "id_cliente" in df.columns:
                     df["id_cliente"] = df["id_cliente"].astype(str).str.strip()
 
+
+
             df_final = (
                 df_con
                 .merge(df_mkt, on="id_cliente", how="outer")
@@ -491,6 +532,12 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                 .merge(df_sin, on="id_cliente", how="outer")
                 .copy()
             )
+
+            colunas_vazadas = ["data_ultimo_sinistro", "data_primeira_apolice", "data_nascimento"]
+            df_final.drop(columns=[col for col in colunas_vazadas if col in df_final.columns], inplace=True)
+
+
+
 
             # MUDANÇA: removido o bloco final —
             #   for col in df_final.columns:
@@ -521,15 +568,37 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
             st.success(f"🎉 Processamento completo! Base unificada com {df_final.shape[0]} clientes e {df_final.shape[1]} variáveis.")
 
             modelo = artefatos["modelo_churn"]
+            pipeline_churn = artefatos["pipeline_churn"]
             colunas_treino = artefatos["colunas_churn"]
 
             for col in colunas_treino:
                 if col not in df_final.columns:
-                    df_final[col] = 0
+                    df_final[col] = np.nan
 
-            X_scoring = df_final[colunas_treino]
+            X_raw = df_final[colunas_treino]
+
+            try:
+                X_scoring = pipeline_churn.transform(X_raw)
+            except Exception as e:
+                st.error(f"Erro ao aplicar o pipeline de preparação do modelo CatBoost: {e}")
+                st.stop()
 
             t0 = time.time()
+            
+            # ===================== remover =================================
+            if isinstance(X_scoring, pd.DataFrame):
+                total_nans = X_scoring.isna().sum().sum()
+                cols_com_nan = X_scoring.isna().sum()[X_scoring.isna().sum() > 0]
+            else:
+                total_nans = np.isnan(X_scoring).sum()
+                cols_com_nan = "Formato Numpy Array (verificação por coluna não exibida)"
+
+            st.write("Quantidade de NaNs após o pipeline CatBoost:", total_nans)
+            if total_nans > 0 and isinstance(X_scoring, pd.DataFrame):
+                st.write(cols_com_nan)
+            # ===============================================================
+
+            # 2. Predição com o modelo CatBoost
             probabilidades = modelo.predict_proba(X_scoring)[:, 1]
             tempo_predicao = time.time() - t0
 
@@ -613,6 +682,10 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                             st.write("NaNs:", np.isnan(dados_processados).sum())
 
                         clusters_preditos = modelo_kmeans.predict(dados_processados)
+
+                        st.write(type(pipeline_proc))
+                        st.write(pipeline_proc)
+   
                         componentes_calculadas = np.asarray(modelo_pca.transform(dados_processados))
 
                         df_visualizacao_pca = pd.DataFrame(
@@ -641,6 +714,76 @@ if arquivos_carregados and len(arquivos_carregados) == 4 and artefatos_carregado
                             yaxis_title="Componente Principal 2 (PC2)",
                         )
                         st.plotly_chart(fig_pca, use_container_width=True)
+
+                        # ============================================================
+                        # 🛠️ MÓDULO DE DEPURAÇÃO DE OUTLIERS DO PCA
+                        # ============================================================
+                        st.markdown("---")
+                        st.markdown("### 🔍 Investigador de Anomalias do PCA")
+                        st.info("Ferramenta de engenharia reversa para identificar qual variável (feature) está distorcendo a projeção de clientes no mapa espacial.")
+                        
+                        # 1. Identificar os clientes mais distantes da origem (0,0)
+                        df_visualizacao_pca['Distancia_Origem'] = np.sqrt(df_visualizacao_pca['PC1']**2 + df_visualizacao_pca['PC2']**2)
+                        df_outliers = df_visualizacao_pca.sort_values(by='Distancia_Origem', ascending=False)
+                        
+                        st.markdown("**Top 5 Clientes mais extremos na projeção atual:**")
+                        st.dataframe(df_outliers.head(5)[['id_cliente', 'Cluster', 'PC1', 'PC2', 'Distancia_Origem']], use_container_width=True)
+
+                        # 2. Seletor para investigação profunda
+                        cliente_alvo = st.selectbox(
+                            "Selecione um ID de Cliente para realizar a decomposição matemática:", 
+                            df_outliers['id_cliente'].head(20).tolist()
+                        )
+
+                        if cliente_alvo:
+                            st.markdown(f"#### Raio-X do Cliente: `{cliente_alvo}`")
+                            
+                            # A. Dados Originais
+                            st.markdown("**1. O que entrou no Pipeline (Base Unificada Bruta):**")
+                            raw_row = df_final[df_final['id_cliente'] == cliente_alvo]
+                            st.dataframe(raw_row)
+                            
+                            # B. Dados Transformados
+                            idx_cliente = raw_row.index[0]
+                            if isinstance(dados_processados, pd.DataFrame):
+                                transformed_row = dados_processados.iloc[idx_cliente:idx_cliente+1]
+                                features_names = dados_processados.columns
+                            else:
+                                features_names = pipeline_proc[:-1].get_feature_names_out()
+                                transformed_row = pd.DataFrame(
+                                    dados_processados[idx_cliente:idx_cliente+1], 
+                                    columns=features_names
+                                )
+                            
+                            st.markdown("**2. O que saiu do Pipeline (Após Imputação, Engenharia e Scaling):**")
+                            st.dataframe(transformed_row)
+                            
+                            # C. Reconstrução do PCA
+                            pesos_pc1 = modelo_pca.components_[0]
+                            pesos_pc2 = modelo_pca.components_[1]
+                            valores_z = transformed_row.values[0]
+                            
+                            # Calcular o impacto de cada feature
+                            impacto_pc1 = pesos_pc1 * valores_z
+                            impacto_pc2 = pesos_pc2 * valores_z
+                            
+                            df_impacto = pd.DataFrame({
+                                'Feature': features_names,
+                                'Valor Pós-Pipeline (Z)': valores_z,
+                                'Peso no PC1': pesos_pc1,
+                                'Impacto Real no PC1': impacto_pc1,
+                                'Impacto Real no PC2': impacto_pc2
+                            })
+                            
+                            # Ordenar pelo maior impacto absoluto no PC1
+                            df_impacto['Impacto Absoluto PC1'] = df_impacto['Impacto Real no PC1'].abs()
+                            df_impacto = df_impacto.sort_values(by='Impacto Absoluto PC1', ascending=False).drop(columns=['Impacto Absoluto PC1'])
+                            
+                            st.markdown("**3. Decomposição do Componente: Qual feature causou a explosão?**")
+                            st.error("🚨 **Atenção à primeira linha desta tabela.** Ela mostra a variável exata que puxou o ponto para longe. Olhe a coluna 'Valor Pós-Pipeline (Z)'. Se este valor for maior que 10 ou menor que -10, o StandardScaler falhou ou uma divisão por zero ocorreu na engenharia de features.")
+                            st.dataframe(df_impacto, use_container_width=True, hide_index=True)
+
+
 
                         st.markdown("#### Distribuição de Clientes por Segmento")
                         dist_cluster = df_visualizacao_pca["Cluster"].value_counts().reset_index()

@@ -11,7 +11,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.model_selection import StratifiedKFold
-
+from sklearn.compose import make_column_selector
 
 # Configuração para o scikit-learn devolver DataFrames em vez de arrays Numpy
 sklearn.set_config(transform_output="pandas")
@@ -166,7 +166,8 @@ class EngenhariaDeFeatures(BaseEstimator, TransformerMixin):
     def transform(self, X):
         X = X.copy()
 
-        X['custo_beneficio'] = X['valor_premio_anual'] / X['valor_cobertura_total'].replace(0, 1)
+        # Usando .clip(lower=1.0) em todos os denominadores para evitar explosão por floats minúsculos
+        #X['custo_beneficio'] = X['valor_premio_anual'] / X['valor_cobertura_total'].clip(lower=1.0)
 
         X['friccao_pagamento'] = (
             (X['metodo_pagamento'].str.lower() == 'boleto') &
@@ -184,10 +185,11 @@ class EngenhariaDeFeatures(BaseEstimator, TransformerMixin):
             (X['satisfacao_nps'] <= 6)
         ).astype(int)
 
-        X['comprometimento_renda'] = X['valor_premio_anual'] / X['renda_anual'].replace(0, 1)
-        X['premio_por_apolice'] = X['valor_premio_anual'] / X['num_apolices_ativas'].replace(0, 1)
+        #X['comprometimento_renda'] = X['valor_premio_anual'] / X['renda_anual'].clip(lower=1.0)
+        #X['premio_por_apolice'] = X['valor_premio_anual'] / X['num_apolices_ativas'].clip(lower=1.0)
 
-        tempo_anos = (X['tempo_cliente_dias'] / 365).replace(0, 0.1)
+        # O tempo também recebe um piso duro para evitar divisão por quase zero
+        tempo_anos = (X['tempo_cliente_dias'] / 365.0).clip(lower=0.1)
         X['frequencia_sinistros_tempo'] = X['num_sinistros_historico'] / tempo_anos
 
         X['isolamento_digital'] = (
@@ -195,19 +197,19 @@ class EngenhariaDeFeatures(BaseEstimator, TransformerMixin):
             (X['ultimo_login_portal_dias'] > 180)
         ).astype(int)
 
-        X['renda_per_capita'] = X['renda_anual'] / (X['qtd_dependentes'] + 1)
-        X['custo_por_km'] = X['valor_premio_anual'] / X['km_anual_estimado'].replace(0, 1)
-        X['peso_franquia_premio'] = X['franquia_media'] / X['valor_premio_anual'].replace(0, 1)
+        X['renda_per_capita'] = X['renda_anual'] / (X['qtd_dependentes'] + 1).clip(lower=1.0)
+        #X['custo_por_km'] = X['valor_premio_anual'] / X['km_anual_estimado'].clip(lower=1.0)
+        #X['peso_franquia_premio'] = X['franquia_media'] / X['valor_premio_anual'].clip(lower=1.0)
 
-        tempo_anos_exato = X['tempo_cliente_dias'] / 365
+        tempo_anos_exato = X['tempo_cliente_dias'] / 365.0
         X['idade_ingresso'] = X['idade'] - tempo_anos_exato
 
-        # Interações com NPS (relação quase monotônica e uma das mais fortes na EDA)
+        # Interações com NPS 
         X['score_insatisfacao'] = 11 - X['satisfacao_nps']
         X['friccao_aguda_nps'] = X['score_insatisfacao'] * (X['num_reclamacoes_12m'] + 1)
         X['custo_da_frustracao'] = X['score_insatisfacao'] * X['valor_premio_anual']
         
-        # Clientes entre o 11º e o 13º mês
+        # Risco Atrito
         X['risco_atrito_score'] = (
             X['isolamento_digital'] +
             X['reclamacoes_s_resposta'] +
@@ -356,11 +358,11 @@ def build_pipeline() -> dict:
         'cluster_sugerido_crm',
         
         # --- Colunas Originais (Denominadores) Removidas p/ Evitar Multicolinearidade ---
-        'valor_cobertura_total', # Agora o modelo focará no 'custo_beneficio'
-        'renda_anual',           # Agora o modelo focará no 'comprometimento_renda' e 'renda_per_capita'
-        'num_apolices_ativas',   # Agora o modelo focará no 'premio_por_apolice'
-        'qtd_dependentes',       # Embutido na 'renda_per_capita'
-        'km_anual_estimado',     # Agora o modelo focará no 'custo_por_km'
+        #'valor_cobertura_total', # Agora o modelo focará no 'custo_beneficio'
+        #'renda_anual',           # Agora o modelo focará no 'comprometimento_renda' e 'renda_per_capita'
+       # 'num_apolices_ativas',   # Agora o modelo focará no 'premio_por_apolice'
+        #'qtd_dependentes',       # Embutido na 'renda_per_capita'
+        #'km_anual_estimado',     # Agora o modelo focará no 'custo_por_km'
     ]
 
     # Categóricas restantes (que antes eram descartadas inteiras) agora
@@ -382,11 +384,12 @@ def build_pipeline() -> dict:
     ]
     
     transformador_colunas = ColumnTransformer(
-        transformers=[
-            ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False), one_hot_cols),
-        ],
-        remainder="passthrough"
-        )
+    transformers=[
+        ("num", StandardScaler(), make_column_selector(dtype_include=['number', 'Int64'])),
+        ("cat", OneHotEncoder(sparse_output=False, handle_unknown="ignore"), one_hot_cols)
+    ],
+    remainder="passthrough" # Deixa passar os IDs, se houver
+    )
 
 
     pipeline = Pipeline([
@@ -395,7 +398,6 @@ def build_pipeline() -> dict:
     ("ordinal_encoding", CodificadorOrdinalManual(encoding_maps)),
     ("remover_colunas", RemovedorDeColunas(colunas_para_remover)),
     ("codificacao", transformador_colunas),
-    ("padronizacao", StandardScaler())
     ])
 
 
