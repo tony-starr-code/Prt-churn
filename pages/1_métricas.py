@@ -25,15 +25,21 @@ st.markdown("Detalhamento técnico dos modelos homologados em produção via MLf
 st.header("🌲 1. Classificador Geral (v3_LightGBM_Model)")
 
 st.subheader("📊 Indicadores de Assertividade")
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
-    st.metric(label="Acurácia Geral", value=f"{metricas.get('accuracy', 0):.2%}", delta="+1.2% vs v2")
+    st.metric("AUC-ROC", f"82.83%")
+
 with col2:
-    st.metric(label="Precisão", value=f"{metricas.get('precision', 0):.2%}", delta="-0.5%")
+    st.metric("Acurácia Geral", f"{metricas.get('accuracy', 0):.2%}")
+
 with col3:
-    st.metric(label="Recall (Sensibilidade)", value=f"{metricas.get('recall', 0):.2%}", delta="+3.1%")
+    st.metric("Precisão", f"{metricas.get('precision', 0):.2%}")
+
 with col4:
-    st.metric(label="F1-Score", value=f"{metricas.get('f1_score', 0):.2%}", delta="+1.8%")
+    st.metric("Recall (Sensibilidade)", f"{metricas.get('recall', 0):.2%}")
+
+with col5:
+    st.metric("F1-Score", f"{metricas.get('f1_score', 0):.2%}")
 
 col_text, col_chart = st.columns([1, 1.5]) # Mantenho a estrutura de colunas
 
