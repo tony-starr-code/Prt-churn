@@ -8,7 +8,11 @@ st.set_page_config(page_title="PRT Seguradora - Perfis de Clientes", layout="wid
 
 st.title("👥 Análise Comportamental dos Clusters (KMeans_k4)")
 st.markdown("Interpretação estratégica dos 4 ecossistemas de clientes gerados pelo nosso modelo baseado em dados de Cadastro, Contratos, Sinistros e Marketing.")
+st.warning("""
+⚠️ **Aviso Importante:** Os dados, percentuais e gráficos apresentados nesta página são referentes à **base de dados histórica utilizada no treinamento** do modelo KMeans (k=4) e servem para fins de interpretação e caracterização dos perfis de clientes.
 
+Esta análise **não reflete dados inseridos em tempo real pelo usuário** nem é recalculada dinamicamente — trata-se de um retrato fixo do comportamento observado no momento do treinamento do modelo.
+""")
 # Títulos das abas atualizados com as taxas corretas após a inversão
 aba0, aba1, aba2, aba3 = st.tabs([
     "🚨 Cluster 0 (Taxa: 21.60%)", 
